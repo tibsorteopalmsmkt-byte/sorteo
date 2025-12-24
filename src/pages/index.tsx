@@ -4,6 +4,11 @@ import Papa from "papaparse";
 import imgLanding1 from "../images/bg-vegas.png";
 import slotMachine from "../images/slot-machine.svg";
 import palmsBetLogo from "../images/palms_bet_logo.svg";
+import vegasBanner from "../images/vegas.png";
+import ruleta from "../images/ruleta.png";
+import ruletaWheel from "../images/ruleta.gif";
+import confetti from "../images/confetti.gif";
+
 
 interface Winner {
   username: string;
@@ -68,6 +73,9 @@ const IndexPage: React.FC = () => {
 
   // Estado para controlar si el modal de la tabla está abierto
   const [isTableModalOpen, setIsTableModalOpen] = useState<boolean>(false);
+
+  // Estado para controlar la visibilidad del confetti
+  const [showConfetti, setShowConfetti] = useState<boolean>(false);
 
   const truncateUsername = (username: string, maxLength: number = 8): string => {
     if (username.length <= maxLength) return username;
@@ -183,7 +191,7 @@ const IndexPage: React.FC = () => {
       // Después de 2 segundos, cambiar a third_page
       const timer = setTimeout(() => {
         setCurrentPage("third");
-      }, 2000);
+      }, 9000);
       return () => clearTimeout(timer);
     }
   }, [currentPage]);
@@ -244,6 +252,26 @@ const IndexPage: React.FC = () => {
     }
   }, [currentPage, alternates.length]);
 
+  // Efecto para mostrar el confetti 4 segundos después de que aparezca second_page
+  useEffect(() => {
+    if (currentPage === "second") {
+      // Resetear visibilidad del confetti
+      setShowConfetti(false);
+      
+      // Mostrar confetti después de 4 segundos
+      const timer = setTimeout(() => {
+        setShowConfetti(true);
+      }, 3000);
+
+      return () => {
+        clearTimeout(timer);
+      };
+    } else {
+      // Resetear cuando no está en second
+      setShowConfetti(false);
+    }
+  }, [currentPage]);
+
   return (
     <div
       className="relative w-screen h-screen min-h-[832px] bg-[#192a44] overflow-hidden"
@@ -274,7 +302,7 @@ const IndexPage: React.FC = () => {
         }`}
       >
         <div className="absolute left-0 top-0 z-10 ml-20 mt-20">
-          <svg
+          {/* <svg
             xmlns="http://www.w3.org/2000/svg"
             width="211"
             height="86"
@@ -468,14 +496,15 @@ const IndexPage: React.FC = () => {
             }}
           >
             LAS VEGAS
-          </p>
+          </p> */}
+          <img src={vegasBanner} />
         </div>
 
         {/* SVG en el centro - Ejemplo con máquina tragamonedas */}
         <div className="absolute h-screen w-screen flex items-center justify-center">
           <div>
             <img
-              src={slotMachine}
+              src={ruleta}
               alt="Slot machine"
               className="w-full h-full object-contain mb-10"
             />
@@ -500,9 +529,16 @@ const IndexPage: React.FC = () => {
         }`}
       >
         <img
-          src={slotMachine}
+          src={ruletaWheel}
           alt="Slot machine"
-          className="w-full h-full object-contain mb-10"
+          className="w-[362px] h-auto"
+        />
+        <img 
+          src={confetti} 
+          alt="Confetti" 
+          className={`w-screen h-auto absolute bottom-0 left-0 transition-opacity duration-500 ${
+            showConfetti ? "opacity-100" : "opacity-0"
+          }`} 
         />
       </div>
       <div
