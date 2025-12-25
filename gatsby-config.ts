@@ -1,4 +1,10 @@
 import type { GatsbyConfig } from "gatsby"
+import * as dotenv from "dotenv"
+
+// Cargar variables de entorno desde .env
+dotenv.config({
+  path: `.env`,
+})
 
 const config: GatsbyConfig = {
   siteMetadata: {
