@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, Timestamp, Firestore } from "firebase/firestore";
 import { db, authenticateAnonymously, isAuthenticated } from "./firebase";
 
 export interface SorteoData {
@@ -26,11 +26,8 @@ export async function saveSorteoResults(
   alternates: Array<{ username: string; code: string }>,
   totalParticipants: number
 ): Promise<string> {
-  // Verificar que la base de datos esté inicializada
-  if (!db) {
-    const error = new Error("Firestore no está inicializado. Verifica la configuración de Firebase.");
-    throw error;
-  }
+  // Obtener la instancia de Firestore (se inicializa automáticamente si es necesario)
+  const dbInstance: Firestore = db;
 
   // Autenticar si no está autenticado (requerido para reglas estrictas)
   if (!isAuthenticated()) {
@@ -45,7 +42,7 @@ export async function saveSorteoResults(
       createdAt: serverTimestamp() as Timestamp,
     };
 
-    const docRef = await addDoc(collection(db, "sorteos"), sorteoData);
+    const docRef = await addDoc(collection(dbInstance, "sorteos"), sorteoData);
     return docRef.id;
   } catch (error) {
     console.error("Error al guardar sorteo en Firestore:", error);
