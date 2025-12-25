@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Papa from "papaparse";
+import { saveSorteoResults } from "../lib/firestore";
 
 import imgLanding1 from "../images/bg-vegas.png";
 import slotMachine from "../images/slot-machine.svg";
@@ -178,6 +179,15 @@ const IndexPage: React.FC = () => {
               }));
 
               setAlternates(alternatesData);
+
+              // Guardar resultados en Firebase
+              saveSorteoResults(
+                winnersData,
+                alternatesData,
+                userCountsArray.length
+              ).catch((error) => {
+                console.error("Error al guardar en Firebase:", error);
+              });
             },
             error: (error: Error) => {
               console.error("Error al parsear CSV:", error);
