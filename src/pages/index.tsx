@@ -9,6 +9,7 @@ import vegasBanner from "../images/vegas.png";
 import ruleta from "../images/ruleta.png";
 import ruletaWheel from "../images/ruleta.gif";
 import confetti from "../images/confetti.gif";
+import logoSvg from "../images/logo.svg";
 
 
 interface Winner {
@@ -119,7 +120,7 @@ const IndexPage: React.FC = () => {
   useEffect(() => {
     if (currentPage === "second") {
       // Leer el CSV
-      fetch("/sorteo_users.csv")
+      fetch("/sorteo_users_2.csv")
         .then((response) => response.text())
         .then((csvText) => {
           Papa.parse<CSVRow>(csvText, {
@@ -522,9 +523,9 @@ const IndexPage: React.FC = () => {
             <div className="border-2 border-[#006afa] border-solid box-border flex flex-col gap-[10px] items-start p-[2px] rounded-[8px] w-full">
               <button
                 onClick={handleStartClick}
-                className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.1)] border-solid box-border flex gap-[8px] h-[52px] items-center justify-center px-[16px] py-[8px] rounded-[6px] w-full cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0"
+                className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.1)] border-solid box-border flex gap-[8px] h-[70px] items-center justify-center px-[16px] py-[8px] rounded-[6px] w-full cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0"
               >
-                <span className="font-urbanist font-extrabold text-[20px] text-center text-[#f5f5f5] whitespace-nowrap leading-[normal]">
+                <span className="font-urbanist font-extrabold text-[28px] text-center text-[#f5f5f5] whitespace-nowrap leading-[normal]">
                   EMPEZAR
                 </span>
               </button>
@@ -558,6 +559,7 @@ const IndexPage: React.FC = () => {
         }`}
       >
         <div>
+          <img src={logoSvg} alt="Logo" className="w-[400px] h-auto mx-auto" />
           <h2
             className="font-urbanist font-black text-[64px] text-center w-full m-0 leading-normal"
               style={{ 
@@ -579,27 +581,37 @@ const IndexPage: React.FC = () => {
               {winners.map((winner, index) => (
                 <div
                   key={index}
-                  className={`relative rounded-lg px-6 py-4 flex flex-col items-center justify-center min-w-[200px] transition-opacity duration-500 ${
+                  className={`relative rounded-lg px-6 py-4 flex flex-col items-center justify-center min-w-[300px] transition-opacity duration-500 ${
                     visibleWinners[index] ? "opacity-100" : "opacity-0"
                   }`}
                 >
                   {index > 0 && (
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[1px] h-3/5 bg-white/20"></div>
                   )}
-                  <div className="absolute bg-white border-2 border-[rgba(0,0,0,0.11)] border-solid rounded-[28px] w-[28px] h-[28px] flex items-center justify-center -top-2 left-2">
-                    <p className="font-urbanist font-medium text-[#192a44] text-[16px]">
+                  <div className="absolute bg-white border-2 border-[rgba(0,0,0,0.11)] border-solid rounded-[32px] w-[32px] h-[32px] flex items-center justify-center -top-2 left-2">
+                    <p className="font-urbanist font-medium text-[#192a44] text-[22px]">
                       {index + 1}
                     </p>
                   </div>
-                  <p className="font-urbanist font-bold text-[24px] text-white text-center">
+                  <p className="font-urbanist font-bold text-[36px] text-white text-center">
                     {winner.username}
                   </p>
-                  <p className="font-urbanist font-normal text-[#a9b3bf] text-[16px] text-center mt-1">
+                  <p className="font-urbanist font-normal text-[#a9b3bf] text-[24px] text-center mt-1">
                     {winner.code}
                   </p>
                 </div>
               ))}
             </div>
+
+            {/* Botón Ver suplentes */}
+            <button
+              onClick={handleVerSuplentesClick}
+              className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-8 cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0 w-[340px]"
+            >
+              <div className="flex flex-col h-[70px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[28px] text-center text-[#f5f5f5] whitespace-nowrap">
+                <p className="leading-[normal] whitespace-pre">Ver suplentes</p>
+              </div>
+            </button>
 
             {/* Botón Ver participantes */}
             {userCounts.length > 0 && (
@@ -613,15 +625,7 @@ const IndexPage: React.FC = () => {
               </button>
             )}
 
-            {/* Botón Ver suplentes */}
-            <button
-              onClick={handleVerSuplentesClick}
-              className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-24 cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0 w-[340px]"
-            >
-              <div className="flex flex-col h-[52px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[16px] text-center text-[#f5f5f5] whitespace-nowrap">
-                <p className="leading-[normal] whitespace-pre">Ver suplentes</p>
-              </div>
-            </button>
+            
           </div>
         </div>
 
@@ -668,13 +672,13 @@ const IndexPage: React.FC = () => {
                   <table className="w-full">
                     <thead className="sticky top-0 bg-[rgba(0,0,0,0.5)]">
                       <tr>
-                        <th className="font-urbanist font-bold text-[16px] text-white text-left px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
+                        <th className="font-urbanist font-bold text-[22px] text-white text-left px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
                           Usuario
                         </th>
-                        <th className="font-urbanist font-bold text-[16px] text-white text-left px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
+                        <th className="font-urbanist font-bold text-[22px] text-white text-left px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
                           ID
                         </th>
-                        <th className="font-urbanist font-bold text-[16px] text-white text-center px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
+                        <th className="font-urbanist font-bold text-[22px] text-white text-center px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
                           Participaciones
                         </th>
                       </tr>
@@ -685,13 +689,13 @@ const IndexPage: React.FC = () => {
                           key={`${user.username}-${user.code}`}
                           className={index % 2 === 0 ? "bg-[rgba(255,255,255,0.02)]" : ""}
                         >
-                          <td className="font-urbanist font-medium text-[16px] text-white px-4 py-3">
+                          <td className="font-urbanist font-medium text-[22px] text-white px-4 py-3">
                             {user.username}
                           </td>
-                          <td className="font-urbanist font-normal text-[16px] text-[#a9b3bf] px-4 py-3">
+                          <td className="font-urbanist font-normal text-[22px] text-[#a9b3bf] px-4 py-3">
                             {user.code}
                           </td>
-                          <td className="font-urbanist font-medium text-[16px] text-white text-center px-4 py-3">
+                          <td className="font-urbanist font-medium text-[22px] text-white text-center px-4 py-3">
                             {user.count}
                           </td>
                         </tr>
@@ -737,13 +741,14 @@ const IndexPage: React.FC = () => {
           </p>
         </button>
         <div>
+        <img src={logoSvg} alt="Logo" className="w-[400px] h-auto mx-auto" />
           <p className="font-urbanist font-bold text-[32px] text-center w-full m-0 leading-normal text-white">
             Suplentes
           </p>
 
           <div className="flex flex-col items-center mt-16">
             {/* Contenedor de suplentes */}
-            <div className="bg-[rgba(0,0,0,0.5)] border-[3px] border-[rgba(255,255,255,0.11)] border-solid box-border flex gap-[20px] items-start p-[24px] rounded-[12px] w-[900px]">
+            <div className="bg-[rgba(0,0,0,0.5)] border-[3px] border-[rgba(255,255,255,0.11)] border-solid box-border flex gap-[20px] items-start p-[24px] rounded-[12px] w-[1200px]">
               {/* Columna 1 - Elementos 1-4 */}
               <div className="flex-1 flex flex-col gap-[16px]">
                 {alternates.slice(0, 4).map((alternate, index) => (
@@ -756,19 +761,19 @@ const IndexPage: React.FC = () => {
                     onMouseLeave={() => setHoveredAlternateIndex(null)}
                   >
                     <div className="flex gap-[12px] items-center">
-                      <div className="relative w-[26px] h-[26px] shrink-0">
+                      <div className="relative w-[32px] h-[32px] shrink-0">
                         <div className="absolute bg-white rounded-full w-full h-full"></div>
-                        <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-urbanist font-bold text-[#192a44] text-[16px]">
+                        <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-urbanist font-bold text-[#192a44] text-[22px]">
                           {index + 1}
                         </p>
                       </div>
-                      <p className="relative font-urbanist font-medium text-[20px] text-white">
+                      <p className="relative font-urbanist font-medium text-[32px] text-white">
                         {truncateUsername(alternate.username)}
                         {/* Tooltip */}
                         {hoveredAlternateIndex === index && (
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50">
                             <div className="bg-[#080F1A] border border-[rgba(255,255,255,0.11)] rounded-[12px] px-4 py-2 relative">
-                              <p className="font-urbanist font-medium text-[20px] text-white text-center whitespace-nowrap">
+                              <p className="font-urbanist font-medium text-[30px] text-white text-center whitespace-nowrap">
                                 {alternate.username}
                               </p>
                               {/* Cola del tooltip */}
@@ -781,7 +786,7 @@ const IndexPage: React.FC = () => {
                         )}
                       </p>
                     </div>
-                    <p className="font-urbanist font-normal text-[#a9b3bf] text-[16px] text-right">
+                    <p className="font-urbanist font-normal text-[#a9b3bf] text-[20px] text-right">
                       {alternate.code}
                     </p>
                   </div>
@@ -805,19 +810,19 @@ const IndexPage: React.FC = () => {
                       onMouseLeave={() => setHoveredAlternateIndex(null)}
                     >
                       <div className="flex gap-[12px] items-center">
-                        <div className="relative w-[26px] h-[26px] shrink-0">
+                        <div className="relative w-[32px] h-[32px] shrink-0">
                           <div className="absolute bg-white rounded-full w-full h-full"></div>
-                          <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-urbanist font-bold text-[#192a44] text-[16px]">
+                          <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-urbanist font-bold text-[#192a44] text-[22px]">
                             {index + 5}
                           </p>
                         </div>
-                        <p className="relative font-urbanist font-medium text-[20px] text-white">
+                        <p className="relative font-urbanist font-medium text-[32px] text-white">
                           {truncateUsername(alternate.username)}
                           {/* Tooltip */}
                           {hoveredAlternateIndex === globalIndex && (
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50">
                               <div className="bg-[#080F1A] border border-[rgba(255,255,255,0.11)] rounded-[12px] px-4 py-2 relative">
-                                <p className="font-urbanist font-medium text-[20px] text-white text-center whitespace-nowrap">
+                                <p className="font-urbanist font-medium text-[30px] text-white text-center whitespace-nowrap">
                                   {alternate.username}
                                 </p>
                                 {/* Cola del tooltip */}
@@ -830,7 +835,7 @@ const IndexPage: React.FC = () => {
                           )}
                         </p>
                       </div>
-                      <p className="font-urbanist font-normal text-[#a9b3bf] text-[16px] text-right">
+                      <p className="font-urbanist font-normal text-[#a9b3bf] text-[20px] text-right">
                         {alternate.code}
                       </p>
                     </div>
@@ -842,7 +847,7 @@ const IndexPage: React.FC = () => {
               <div className="bg-[rgba(255,255,255,0.11)] w-px h-full shrink-0"></div>
 
               {/* Columna 3 - Elementos 9-12 */}
-              <div className="flex flex-col gap-[16px] w-[256px]">
+              <div className="flex flex-col gap-[16px]">
                 {alternates.slice(8, 12).map((alternate, index) => {
                   const globalIndex = index + 8;
                   return (
@@ -855,19 +860,19 @@ const IndexPage: React.FC = () => {
                       onMouseLeave={() => setHoveredAlternateIndex(null)}
                     >
                       <div className="flex gap-[12px] items-center">
-                        <div className="relative w-[26px] h-[26px] shrink-0">
+                        <div className="relative w-[32px] h-[32px] shrink-0">
                           <div className="absolute bg-white rounded-full w-full h-full"></div>
-                          <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-urbanist font-bold text-[#192a44] text-[16px]">
+                          <p className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-urbanist font-bold text-[#192a44] text-[22px]">
                             {index + 9}
                           </p>
                         </div>
-                        <p className="relative font-urbanist font-medium text-[20px] text-white">
+                        <p className="relative font-urbanist font-medium text-[32px] text-white">
                           {truncateUsername(alternate.username)}
                           {/* Tooltip */}
                           {hoveredAlternateIndex === globalIndex && (
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50">
                               <div className="bg-[#080F1A] border border-[rgba(255,255,255,0.11)] rounded-[12px] px-4 py-2 relative">
-                                <p className="font-urbanist font-medium text-[20px] text-white text-center whitespace-nowrap">
+                                <p className="font-urbanist font-medium text-[30px] text-white text-center whitespace-nowrap">
                                   {alternate.username}
                                 </p>
                                 {/* Cola del tooltip */}
@@ -880,7 +885,7 @@ const IndexPage: React.FC = () => {
                           )}
                         </p>
                       </div>
-                      <p className="font-urbanist font-normal text-[#a9b3bf] text-[16px] text-right">
+                      <p className="font-urbanist font-normal text-[#a9b3bf] text-[20px] text-right">
                         {alternate.code}
                       </p>
                     </div>
@@ -894,7 +899,7 @@ const IndexPage: React.FC = () => {
               onClick={handleTerminarClick}
               className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-24 cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0 w-[340px]"
             >
-              <div className="flex flex-col h-[52px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[16px] text-center text-[#f5f5f5] whitespace-nowrap">
+              <div className="flex flex-col h-[70px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[28px] text-center text-[#f5f5f5] whitespace-nowrap">
                 <p className="leading-[normal] whitespace-pre">Terminar</p>
               </div>
             </button>
@@ -934,9 +939,7 @@ const IndexPage: React.FC = () => {
           </p>
         </button>
         <div>
-          <div>
-            <img src={palmsBetLogo} alt="Palms Bet Logo" className="object-contain mx-auto translate-x-[-25px]" />
-          </div>
+        <img src={logoSvg} alt="Logo" className="w-[400px] h-auto mx-auto" />
           <p className="font-urbanist font-bold text-[32px] text-center w-full m-0 leading-normal text-white">
             ¡Felicidades a los ganadores!
           </p>
@@ -945,22 +948,22 @@ const IndexPage: React.FC = () => {
               {winners.map((winner, index) => (
                 <div
                   key={index}
-                  className={`relative rounded-lg px-6 py-4 flex flex-col items-center justify-center min-w-[200px] transition-opacity duration-500 ${
+                  className={`relative rounded-lg px-6 py-4 flex flex-col items-center justify-center min-w-[300px] transition-opacity duration-500 ${
                     visibleWinners[index] ? "opacity-100" : "opacity-0"
                   }`}
                 >
                   {index > 0 && (
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[1px] h-3/5 bg-white/20"></div>
                   )}
-                  <div className="absolute bg-white border-2 border-[rgba(0,0,0,0.11)] border-solid rounded-[28px] w-[28px] h-[28px] flex items-center justify-center -top-2 left-2">
-                    <p className="font-urbanist font-medium text-[#192a44] text-[16px]">
+                  <div className="absolute bg-white border-2 border-[rgba(0,0,0,0.11)] border-solid rounded-[32px] w-[32px] h-[32px] flex items-center justify-center -top-2 left-2">
+                    <p className="font-urbanist font-medium text-[#192a44] text-[22px]">
                       {index + 1}
                     </p>
                   </div>
-                  <p className="font-urbanist font-bold text-[24px] text-white text-center">
+                  <p className="font-urbanist font-bold text-[36px] text-white text-center">
                     {winner.username}
                   </p>
-                  <p className="font-urbanist font-normal text-[#a9b3bf] text-[16px] text-center mt-1">
+                  <p className="font-urbanist font-normal text-[#a9b3bf] text-[24px] text-center mt-1">
                     {winner.code}
                   </p>
             </div>
