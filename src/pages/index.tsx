@@ -120,7 +120,7 @@ const IndexPage: React.FC = () => {
   useEffect(() => {
     if (currentPage === "second") {
       // Leer el CSV
-      fetch("/sorteo_users_4.csv")
+      fetch("/sorteo_users_5.csv")
         .then((response) => response.text())
         .then((csvText) => {
           Papa.parse<CSVRow>(csvText, {
