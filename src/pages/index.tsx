@@ -726,9 +726,9 @@ const IndexPage: React.FC = () => {
                   <h3 className="font-urbanist font-bold text-[32px] text-white">
                     Participantes
                   </h3>
-                  {/* <p className="font-urbanist font-medium text-[18px] text-[#a9b3bf] mt-1">
+                  <p className="font-urbanist font-medium text-[18px] text-[#a9b3bf] mt-1">
                     Total: {userCounts.length} {userCounts.length === 1 ? 'usuario' : 'usuarios'}
-                  </p> */}
+                  </p>
                 </div>
                 <button
                   onClick={() => setIsTableModalOpen(false)}
