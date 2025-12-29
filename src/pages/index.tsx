@@ -120,7 +120,7 @@ const IndexPage: React.FC = () => {
   useEffect(() => {
     if (currentPage === "second") {
       // Leer el CSV
-      fetch("/sorteo_users_2.csv")
+      fetch("/sorteo_users_3.csv")
         .then((response) => response.text())
         .then((csvText) => {
           Papa.parse<CSVRow>(csvText, {
@@ -939,7 +939,7 @@ const IndexPage: React.FC = () => {
           </p>
         </button>
         <div>
-        <img src={logoSvg} alt="Logo" className="w-[400px] h-auto mx-auto" />
+        <img src={logoSvg} alt="Logo" className="w-[500px] h-auto mx-auto" />
           <p className="font-urbanist font-bold text-[32px] text-center w-full m-0 leading-normal text-white">
             ¡Felicidades a los ganadores!
           </p>
