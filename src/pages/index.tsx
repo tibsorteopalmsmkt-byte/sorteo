@@ -110,10 +110,43 @@ const IndexPage: React.FC = () => {
     setCurrentPage("third");
   };
 
-  // Función para seleccionar elementos aleatorios de un array
+  // Función para seleccionar elementos aleatorios de un array usando crypto.getRandomValues()
+  // Algoritmo Fisher-Yates para una aleatoriedad criptográficamente segura
   const getRandomElements = <T,>(array: T[], count: number): T[] => {
-    const shuffled = [...array].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, count);
+    if (count >= array.length) {
+      return [...array];
+    }
+    
+    const result: T[] = [];
+    const available = [...array];
+    
+    // Usar crypto.getRandomValues() para obtener números aleatorios seguros
+    const randomValues = new Uint32Array(count);
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+      window.crypto.getRandomValues(randomValues);
+    } else {
+      // Fallback a Math.random() si crypto no está disponible (muy raro en navegadores modernos)
+      for (let i = 0; i < count; i++) {
+        randomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
+      }
+    }
+    
+    // Algoritmo Fisher-Yates para seleccionar elementos aleatorios
+    for (let i = 0; i < count; i++) {
+      // Convertir el valor aleatorio a un índice válido
+      const randomIndex = Number(randomValues[i]) % available.length;
+      
+      // Mover el elemento seleccionado al resultado
+      result.push(available[randomIndex]);
+      
+      // Remover el elemento seleccionado del array disponible
+      // (intercambiar con el último y hacer pop para eficiencia O(1))
+      [available[randomIndex], available[available.length - 1]] = 
+        [available[available.length - 1], available[randomIndex]];
+      available.pop();
+    }
+    
+    return result;
   };
 
   // Efecto para leer y procesar el CSV cuando estamos en second_page
@@ -156,19 +189,67 @@ const IndexPage: React.FC = () => {
                 })
               );
 
+              // Ordenar por cantidad de participaciones de mayor a menor
+              userCountsArray.sort((a, b) => b.count - a.count);
+
               setUserCounts(userCountsArray);
 
-              // Seleccionar 4 ganadores únicos aleatoriamente
-              const selectedWinners = getRandomElements(userCountsArray, 4);
-              const winnersData: Winner[] = selectedWinners.map((user) => ({
-                username: user.username,
-                code: user.code,
-              }));
+              // Crear un array donde cada usuario aparece tantas veces como participaciones tenga
+              // Esto hace que la probabilidad de selección sea proporcional a las participaciones
+              const weightedUsersArray: Winner[] = [];
+              userCountsArray.forEach((user) => {
+                for (let i = 0; i < user.count; i++) {
+                  weightedUsersArray.push({
+                    username: user.username,
+                    code: user.code,
+                  });
+                }
+              });
+
+              // Seleccionar 4 ganadores únicos con probabilidad proporcional a participaciones
+              const winnersData: Winner[] = [];
+              const selectedUsernames = new Set<string>();
+              const availableWeighted = [...weightedUsersArray];
+              
+              // Obtener números aleatorios seguros para todas las selecciones
+              const randomValues = new Uint32Array(4);
+              if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+                window.crypto.getRandomValues(randomValues);
+              } else {
+                for (let i = 0; i < 4; i++) {
+                  randomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
+                }
+              }
+
+              // Seleccionar 4 ganadores únicos
+              for (let i = 0; i < 4 && availableWeighted.length > 0; i++) {
+                // Filtrar usuarios ya seleccionados
+                const available = availableWeighted.filter(
+                  (user) => !selectedUsernames.has(user.username)
+                );
+                
+                if (available.length === 0) break;
+                
+                // Seleccionar un índice aleatorio del array disponible
+                const randomIndex = Number(randomValues[i]) % available.length;
+                const selected = available[randomIndex];
+                
+                winnersData.push(selected);
+                selectedUsernames.add(selected.username);
+                
+                // Remover todas las ocurrencias de este usuario del array ponderado
+                // para evitar seleccionarlo de nuevo
+                for (let j = availableWeighted.length - 1; j >= 0; j--) {
+                  if (availableWeighted[j].username === selected.username) {
+                    availableWeighted.splice(j, 1);
+                  }
+                }
+              }
 
               setWinners(winnersData);
 
               // Seleccionar 12 suplentes únicos que NO sean ganadores
-              const winnerUsernames = new Set(selectedWinners.map((w) => w.username));
+              const winnerUsernames = new Set(winnersData.map((w) => w.username));
               const availableAlternates = userCountsArray.filter(
                 (user) => !winnerUsernames.has(user.username)
               );
@@ -641,9 +722,14 @@ const IndexPage: React.FC = () => {
             >
               {/* Header del modal */}
               <div className="flex items-center justify-between mb-6">
-                <h3 className="font-urbanist font-bold text-[32px] text-white">
-                  Participantes
-                </h3>
+                <div>
+                  <h3 className="font-urbanist font-bold text-[32px] text-white">
+                    Participantes
+                  </h3>
+                  <p className="font-urbanist font-medium text-[18px] text-[#a9b3bf] mt-1">
+                    Total: {userCounts.length} {userCounts.length === 1 ? 'usuario' : 'usuarios'}
+                  </p>
+                </div>
                 <button
                   onClick={() => setIsTableModalOpen(false)}
                   className="text-white hover:text-[#a9b3bf] transition-colors"
