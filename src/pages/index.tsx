@@ -249,16 +249,62 @@ const IndexPage: React.FC = () => {
               setWinners(winnersData);
 
               // Seleccionar 12 suplentes únicos que NO sean ganadores
+              // También con probabilidad proporcional a participaciones
               const winnerUsernames = new Set(winnersData.map((w) => w.username));
-              const availableAlternates = userCountsArray.filter(
-                (user) => !winnerUsernames.has(user.username)
-              );
+              
+              // Crear array ponderado de suplentes (excluyendo ganadores)
+              const weightedAlternatesArray: Winner[] = [];
+              userCountsArray.forEach((user) => {
+                // Solo incluir usuarios que NO sean ganadores
+                if (!winnerUsernames.has(user.username)) {
+                  for (let i = 0; i < user.count; i++) {
+                    weightedAlternatesArray.push({
+                      username: user.username,
+                      code: user.code,
+                    });
+                  }
+                }
+              });
 
-              const selectedAlternates = getRandomElements(availableAlternates, 12);
-              const alternatesData: Winner[] = selectedAlternates.map((user) => ({
-                username: user.username,
-                code: user.code,
-              }));
+              // Seleccionar 12 suplentes únicos con probabilidad proporcional a participaciones
+              const alternatesData: Winner[] = [];
+              const selectedAlternateUsernames = new Set<string>();
+              const availableAlternatesWeighted = [...weightedAlternatesArray];
+              
+              // Obtener números aleatorios seguros para todas las selecciones de suplentes
+              const alternateRandomValues = new Uint32Array(12);
+              if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+                window.crypto.getRandomValues(alternateRandomValues);
+              } else {
+                for (let i = 0; i < 12; i++) {
+                  alternateRandomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
+                }
+              }
+
+              // Seleccionar 12 suplentes únicos
+              for (let i = 0; i < 12 && availableAlternatesWeighted.length > 0; i++) {
+                // Filtrar usuarios ya seleccionados
+                const available = availableAlternatesWeighted.filter(
+                  (user) => !selectedAlternateUsernames.has(user.username)
+                );
+                
+                if (available.length === 0) break;
+                
+                // Seleccionar un índice aleatorio del array disponible
+                const randomIndex = Number(alternateRandomValues[i]) % available.length;
+                const selected = available[randomIndex];
+                
+                alternatesData.push(selected);
+                selectedAlternateUsernames.add(selected.username);
+                
+                // Remover todas las ocurrencias de este usuario del array ponderado
+                // para evitar seleccionarlo de nuevo
+                for (let j = availableAlternatesWeighted.length - 1; j >= 0; j--) {
+                  if (availableAlternatesWeighted[j].username === selected.username) {
+                    availableAlternatesWeighted.splice(j, 1);
+                  }
+                }
+              }
 
               setAlternates(alternatesData);
 
