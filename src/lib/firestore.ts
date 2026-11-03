@@ -10,6 +10,10 @@ export interface SorteoData {
     username: string;
     code: string;
   }>;
+  finalWinner?: {
+    username: string;
+    code: string;
+  } | null;
   totalParticipants: number;
   createdAt: Timestamp;
 }
@@ -24,7 +28,8 @@ export interface SorteoData {
 export async function saveSorteoResults(
   winners: Array<{ username: string; code: string }>,
   alternates: Array<{ username: string; code: string }>,
-  totalParticipants: number
+  totalParticipants: number,
+  finalWinner?: { username: string; code: string } | null
 ): Promise<string> {
   // Obtener la instancia de Firestore (se inicializa automáticamente si es necesario)
   const dbInstance: Firestore = db;
@@ -38,6 +43,7 @@ export async function saveSorteoResults(
     const sorteoData: SorteoData = {
       winners,
       alternates,
+      ...(finalWinner ? { finalWinner } : {}),
       totalParticipants,
       createdAt: serverTimestamp() as Timestamp,
     };

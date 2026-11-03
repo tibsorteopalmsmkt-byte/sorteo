@@ -10,6 +10,19 @@ import ruleta from "../images/ruleta.png";
 import ruletaWheel from "../images/ruleta.gif";
 import confetti from "../images/confetti.gif";
 import logoSvg from "../images/logo.svg";
+import iconX from "../images/icon-x.svg";
+import palmsbetPalm from "../images/palmsbet/03302.svg";
+import palmsbetP from "../images/palmsbet/7066c.svg";
+import palmsbetA from "../images/palmsbet/8fdca.svg";
+import palmsbetL from "../images/palmsbet/00d5e.svg";
+import palmsbetM from "../images/palmsbet/59c84.svg";
+import palmsbetS from "../images/palmsbet/46730.svg";
+import palmsbetB from "../images/palmsbet/347ba.svg";
+import palmsbetE from "../images/palmsbet/a7a33.svg";
+import palmsbetT from "../images/palmsbet/885e5.svg";
+import palmsbetDot from "../images/palmsbet/8f111.svg";
+import palmsbetP2 from "../images/palmsbet/ea031.svg";
+import palmsbetE2 from "../images/palmsbet/1dcad.svg";
 
 
 interface Winner {
@@ -28,18 +41,109 @@ interface UserCount {
   count: number;
 }
 
+const WINNER_COUNT = 10;
+const PRIZE_LABEL = "S/ 100";
+
+function WinnerCard({
+  position,
+  username,
+  code,
+  revealed,
+}: {
+  position: number;
+  username: string;
+  code: string;
+  revealed: boolean;
+}) {
+  return (
+    <div
+      className={`flex min-w-0 flex-1 flex-col gap-[8px] items-start p-[16px] relative rounded-[16px] border-2 border-solid transition-all duration-500 ${
+        revealed
+          ? "bg-[rgba(0,0,0,0.5)] border-[#ffce58] drop-shadow-[0px_0px_10px_rgba(255,208,92,0.3)]"
+          : "bg-[rgba(0,0,0,0.3)] border-[rgba(255,255,255,0.2)]"
+      }`}
+    >
+      <div className="flex items-center justify-between w-full">
+        <div
+          className={`flex items-center justify-center rounded-[14px] shrink-0 size-[28px] ${
+            revealed ? "bg-white" : "bg-[rgba(255,255,255,0.4)]"
+          }`}
+        >
+          <p className="font-urbanist font-medium leading-[normal] text-[#192a44] text-[16px]">
+            {position}
+          </p>
+        </div>
+        <div
+          className={`bg-[rgba(255,206,88,0.15)] border border-[#ffce58] border-solid flex px-[12px] py-[4px] rounded-[999px] ${
+            revealed ? "" : "opacity-50"
+          }`}
+        >
+          <p className="font-urbanist font-bold leading-[normal] text-[#ffce58] text-[16px] whitespace-nowrap">
+            {PRIZE_LABEL}
+          </p>
+        </div>
+      </div>
+      <p
+        className={`font-urbanist font-bold leading-[normal] text-[24px] truncate w-full ${
+          revealed ? "text-white" : "text-[#a9b3bf]"
+        }`}
+      >
+        {revealed ? username : "? ? ?"}
+      </p>
+      <p className="font-urbanist font-normal leading-[normal] text-[#a9b3bf] text-[16px] whitespace-nowrap">
+        {revealed ? code : "--------"}
+      </p>
+    </div>
+  );
+}
+
+function WinnersGrid({
+  winners,
+  visible,
+}: {
+  winners: Winner[];
+  visible: boolean[];
+}) {
+  return (
+    <div className="flex flex-col gap-[16px] w-[1100px] max-w-[calc(100vw-48px)]">
+      {[0, 1].map((row) => (
+        <div key={row} className="flex gap-[16px] w-full">
+          {Array.from({ length: 5 }, (_, column) => {
+            const index = row * 5 + column;
+            const winner = winners[index];
+            return (
+              <WinnerCard
+                key={index}
+                position={index + 1}
+                username={winner?.username ?? ""}
+                code={winner?.code ?? ""}
+                revealed={Boolean(visible[index] && winner)}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const IndexPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<
-    "first" | "second" | "third" | "fourth" | "fifth"
+    "first" | "second" | "third" | "fourth" | "fifth" | "final"
   >("first");
+  const [animationNext, setAnimationNext] = useState<"third" | "final">("third");
+  const [spinKey, setSpinKey] = useState(0);
+  const [finalWinner, setFinalWinner] = useState<Winner | null>(null);
+  const [finalWinnerVisible, setFinalWinnerVisible] = useState(false);
+  const [showWinnerActions, setShowWinnerActions] = useState(false);
 
-  // Datos de ganadores (4 ganadores) - se actualizarán desde el CSV
-  const [winners, setWinners] = useState<Winner[]>([
-    { username: "leon1989", code: "60582345" },
-    { username: "leon1989", code: "60582345" },
-    { username: "leon1989", code: "60582345" },
-    { username: "leon1989", code: "60582345" },
-  ]);
+  // Datos de ganadores (10 ganadores) - se actualizarán desde el CSV
+  const [winners, setWinners] = useState<Winner[]>(
+    Array.from({ length: WINNER_COUNT }, () => ({
+      username: "leon1989",
+      code: "60582345",
+    }))
+  );
 
   // Datos de suplentes (12 suplentes) - se actualizarán desde el CSV
   const [alternates, setAlternates] = useState<Winner[]>([
@@ -91,11 +195,44 @@ const IndexPage: React.FC = () => {
   };
 
   const handleStartClick = () => {
+    setAnimationNext("third");
+    setSpinKey((key) => key + 1);
     setCurrentPage("second");
   };
 
-  const handleVerSuplentesClick = () => {
-    setCurrentPage("fourth");
+  const handleSorteoPremioFinalClick = () => {
+    const excluded = new Set(winners.map((winner) => winner.username));
+    const pool: Winner[] = [];
+    userCounts.forEach((user) => {
+      if (excluded.has(user.username)) return;
+      for (let i = 0; i < user.count; i++) {
+        pool.push({ username: user.username, code: user.code });
+      }
+    });
+
+    if (pool.length > 0) {
+      const randomValues = new Uint32Array(1);
+      if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+        window.crypto.getRandomValues(randomValues);
+      } else {
+        randomValues[0] = Math.floor(Math.random() * 0xffffffff);
+      }
+      const selected = pool[Number(randomValues[0]) % pool.length];
+      setFinalWinner(selected);
+      saveSorteoResults(
+        winners,
+        alternates,
+        userCounts.length,
+        selected
+      ).catch((error) => {
+        console.error("Error al guardar el premio final:", error);
+      });
+    }
+
+    setFinalWinnerVisible(false);
+    setAnimationNext("final");
+    setSpinKey((key) => key + 1);
+    setCurrentPage("second");
   };
 
   const handleTerminarClick = () => {
@@ -103,7 +240,7 @@ const IndexPage: React.FC = () => {
   };
 
   const handleRegresarFromFifth = () => {
-    setCurrentPage("fourth");
+    setCurrentPage("final");
   };
 
   const handleRegresarFromFourth = () => {
@@ -152,6 +289,7 @@ const IndexPage: React.FC = () => {
   // Efecto para leer y procesar el CSV cuando estamos en second_page
   useEffect(() => {
     if (currentPage === "second") {
+      if (animationNext === "third") {
       // Leer el CSV
       fetch("/sorteo_users_7.csv")
         .then((response) => response.text())
@@ -206,23 +344,23 @@ const IndexPage: React.FC = () => {
                 }
               });
 
-              // Seleccionar 4 ganadores únicos con probabilidad proporcional a participaciones
+              // Seleccionar 10 ganadores únicos con probabilidad proporcional a participaciones
               const winnersData: Winner[] = [];
               const selectedUsernames = new Set<string>();
               const availableWeighted = [...weightedUsersArray];
               
               // Obtener números aleatorios seguros para todas las selecciones
-              const randomValues = new Uint32Array(4);
+              const randomValues = new Uint32Array(WINNER_COUNT);
               if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
                 window.crypto.getRandomValues(randomValues);
               } else {
-                for (let i = 0; i < 4; i++) {
+                for (let i = 0; i < WINNER_COUNT; i++) {
                   randomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
                 }
               }
 
-              // Seleccionar 4 ganadores únicos
-              for (let i = 0; i < 4 && availableWeighted.length > 0; i++) {
+              // Seleccionar 10 ganadores únicos
+              for (let i = 0; i < WINNER_COUNT && availableWeighted.length > 0; i++) {
                 // Filtrar usuarios ya seleccionados
                 const available = availableWeighted.filter(
                   (user) => !selectedUsernames.has(user.username)
@@ -325,23 +463,29 @@ const IndexPage: React.FC = () => {
         .catch((error) => {
           console.error("Error al leer CSV:", error);
         });
+      }
 
-      // Después de 2 segundos, cambiar a third_page
       const timer = setTimeout(() => {
-        setCurrentPage("third");
+        setCurrentPage(animationNext);
       }, 9000);
       return () => clearTimeout(timer);
     }
-  }, [currentPage]);
+  }, [currentPage, animationNext]);
 
   // Efecto para activar el fade-in de los ganadores en third_page y fifth_page
   useEffect(() => {
-    if (currentPage === "third" || currentPage === "fifth") {
-      // Resetear visibilidad
+    if (currentPage === "fifth") {
+      setShowWinnerActions(false);
+      setVisibleWinners(new Array(winners.length).fill(true));
+      return;
+    }
+
+    if (currentPage === "third") {
+      setShowWinnerActions(false);
       setVisibleWinners(new Array(winners.length).fill(false));
-      
-      // Activar cada ganador con delay de 500ms
+
       const timers: NodeJS.Timeout[] = [];
+      let actionTimer: NodeJS.Timeout | undefined;
       winners.forEach((_, index) => {
         const timer = setTimeout(() => {
           setVisibleWinners((prev) => {
@@ -349,17 +493,22 @@ const IndexPage: React.FC = () => {
             newState[index] = true;
             return newState;
           });
+          if (index === winners.length - 1) {
+            actionTimer = setTimeout(() => setShowWinnerActions(true), 500);
+          }
         }, index * 500);
         timers.push(timer);
       });
 
       return () => {
         timers.forEach((timer) => clearTimeout(timer));
+        if (actionTimer) clearTimeout(actionTimer);
+        setShowWinnerActions(false);
       };
-    } else {
-      // Resetear cuando no está en third o fifth
-      setVisibleWinners(new Array(winners.length).fill(false));
     }
+
+    setShowWinnerActions(false);
+    setVisibleWinners(new Array(winners.length).fill(false));
   }, [currentPage, winners]);
 
   // Efecto para activar el fade-in de los suplentes en fourth_page
@@ -408,6 +557,13 @@ const IndexPage: React.FC = () => {
       // Resetear cuando no está en second
       setShowConfetti(false);
     }
+  }, [currentPage]);
+
+  useEffect(() => {
+    if (currentPage !== "final") return;
+    setFinalWinnerVisible(false);
+    const timer = setTimeout(() => setFinalWinnerVisible(true), 400);
+    return () => clearTimeout(timer);
   }, [currentPage]);
 
   return (
@@ -667,6 +823,7 @@ const IndexPage: React.FC = () => {
         }`}
       >
         <img
+          key={spinKey}
           src={ruletaWheel}
           alt="Slot machine"
           className="w-[362px] h-auto"
@@ -686,160 +843,117 @@ const IndexPage: React.FC = () => {
         }`}
       >
         <div>
-          <img src={logoSvg} alt="Logo" className="w-[400px] h-auto mx-auto" />
-          <h2
-            className="font-urbanist font-black text-[64px] text-center w-full m-0 leading-normal"
-              style={{ 
-              background: "linear-gradient(180deg, #ffd869 0%, #f6c44d 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-              textShadow: "0 0 10px rgba(255, 216, 105, 0.6)",
-              filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
-            }}
-          >
-            GANADORES
-          </h2>
-          <p className="font-urbanist font-bold text-[32px] text-center w-full m-0 leading-normal text-white">
-            Se van a Las Vegas
-          </p>
-          <div className="flex flex-col items-center mt-6">
-            <div className="bg-[rgba(0,0,0,0.5)] border-4 border-[#ffce58] border-solid rounded-[20px] p-8 inline-flex gap-0">
-              {winners.map((winner, index) => (
-                <div
-                  key={index}
-                  className={`relative rounded-lg px-6 py-4 flex flex-col items-center justify-center min-w-[300px] transition-opacity duration-500 ${
-                    visibleWinners[index] ? "opacity-100" : "opacity-0"
-                  }`}
-                >
-                  {index > 0 && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[1px] h-3/5 bg-white/20"></div>
-                  )}
-                  <div className="absolute bg-white border-2 border-[rgba(0,0,0,0.11)] border-solid rounded-[32px] w-[32px] h-[32px] flex items-center justify-center -top-2 left-2">
-                    <p className="font-urbanist font-medium text-[#192a44] text-[22px]">
-                      {index + 1}
-                    </p>
-                  </div>
-                  <p className="font-urbanist font-bold text-[36px] text-white text-center">
-                    {winner.username}
-                  </p>
-                  <p className="font-urbanist font-normal text-[#a9b3bf] text-[24px] text-center mt-1">
-                    {winner.code}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Botón Ver suplentes */}
-            <button
-              onClick={handleVerSuplentesClick}
-              className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-8 cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0 w-[340px]"
+          <img src={logoSvg} alt="Logo" className="w-[320px] h-auto mx-auto mb-2" />
+          <div className="flex flex-col gap-[4px] items-center">
+            <h2
+              className="font-urbanist font-black text-[64px] text-center w-full m-0 leading-normal"
+              style={{
+                background:
+                  "linear-gradient(188deg, #ffed87 10%, #ffbe41 92%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
+              }}
             >
-              <div className="flex flex-col h-[70px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[28px] text-center text-[#f5f5f5] whitespace-nowrap">
-                <p className="leading-[normal] whitespace-pre">Ver suplentes</p>
-              </div>
-            </button>
+              GANADORES
+            </h2>
+            <p className="font-urbanist font-medium text-[28px] text-center w-full m-0 leading-normal text-white">
+              10 ganadores de S/ 100
+            </p>
+          </div>
+          <div className="flex flex-col items-center mt-8">
+            <WinnersGrid winners={winners} visible={visibleWinners} />
 
-            {/* Botón Ver participantes */}
-            {userCounts.length > 0 && (
-              <button
-                onClick={() => setIsTableModalOpen(true)}
-                className="bg-[#354865] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-12 cursor-pointer transition-all duration-300 hover:bg-[#2a3a52] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(53,72,101,0.4)] active:translate-y-0 w-[340px]"
-              >
-                <div className="flex flex-col h-[52px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[16px] text-center text-[#f5f5f5] whitespace-nowrap">
-                  <p className="leading-[normal] whitespace-pre">Ver participantes</p>
-                </div>
-              </button>
+            {showWinnerActions && (
+              <>
+                <button
+                  onClick={handleSorteoPremioFinalClick}
+                  className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-8 cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0 w-[420px]"
+                >
+                  <div className="flex flex-col h-[70px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[24px] text-center text-[#f5f5f5] whitespace-nowrap">
+                    <p className="leading-[normal] whitespace-pre">Sorteo premio final</p>
+                  </div>
+                </button>
+
+                {userCounts.length > 0 && (
+                  <button
+                    onClick={() => setIsTableModalOpen(true)}
+                    className="bg-[#354865] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-12 cursor-pointer transition-all duration-300 hover:bg-[#2a3a52] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(53,72,101,0.4)] active:translate-y-0 w-[340px]"
+                  >
+                    <div className="flex flex-col h-[52px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[16px] text-center text-[#f5f5f5] whitespace-nowrap">
+                      <p className="leading-[normal] whitespace-pre">Ver participantes</p>
+                    </div>
+                  </button>
+                )}
+              </>
             )}
 
             
           </div>
         </div>
+      </div>
 
         {/* Modal de tabla de participantes */}
         {isTableModalOpen && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.8)]"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.8)] px-4"
             onClick={() => setIsTableModalOpen(false)}
           >
             <div
-              className="bg-[rgba(25,42,68,0.95)] border-[3px] border-[rgba(255,255,255,0.11)] border-solid rounded-[20px] p-8 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col"
+              className="bg-[#0b1220] border-2 border-[#ffce58] border-solid rounded-[20px] shadow-[0px_16px_48px_0px_rgba(0,0,0,0.5)] p-[24px] flex flex-col gap-[16px] w-full max-w-[880px]"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header del modal */}
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-urbanist font-bold text-[32px] text-white">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex flex-col gap-[2px]">
+                  <h3 className="font-urbanist font-bold text-[28px] text-white m-0 leading-normal">
                     Participantes
                   </h3>
-                  <p className="font-urbanist font-medium text-[18px] text-[#a9b3bf] mt-1">
-                    Total: {userCounts.length} {userCounts.length === 1 ? 'usuario' : 'usuarios'}
+                  <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] m-0 leading-normal">
+                    {userCounts.length.toLocaleString("en-US")} participantes del sorteo · desliza para ver más
                   </p>
                 </div>
                 <button
                   onClick={() => setIsTableModalOpen(false)}
-                  className="text-white hover:text-[#a9b3bf] transition-colors"
+                  aria-label="Cerrar"
+                  className="bg-[rgba(255,255,255,0.1)] rounded-[20px] size-[40px] flex items-center justify-center shrink-0 cursor-pointer"
                 >
-                  <svg
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M18 6L6 18M6 6L18 18"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <img src={iconX} alt="" />
                 </button>
               </div>
-
-              {/* Tabla con scroll */}
-              <div className="overflow-y-auto flex-1">
-                <div className="bg-[rgba(0,0,0,0.3)] border-[2px] border-[rgba(255,255,255,0.11)] border-solid rounded-[12px] overflow-hidden">
-                  <table className="w-full">
-                    <thead className="sticky top-0 bg-[rgba(0,0,0,0.5)]">
-                      <tr>
-                        <th className="font-urbanist font-bold text-[22px] text-white text-left px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
-                          Usuario
-                        </th>
-                        <th className="font-urbanist font-bold text-[22px] text-white text-left px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
-                          ID
-                        </th>
-                        <th className="font-urbanist font-bold text-[22px] text-white text-center px-4 py-3 border-b border-[rgba(255,255,255,0.11)]">
-                          Participaciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userCounts.map((user, index) => (
-                        <tr
-                          key={`${user.username}-${user.code}`}
-                          className={index % 2 === 0 ? "bg-[rgba(255,255,255,0.02)]" : ""}
-                        >
-                          <td className="font-urbanist font-medium text-[22px] text-white px-4 py-3">
-                            {user.username}
-                          </td>
-                          <td className="font-urbanist font-normal text-[22px] text-[#a9b3bf] px-4 py-3">
-                            {user.code}
-                          </td>
-                          <td className="font-urbanist font-medium text-[22px] text-white text-center px-4 py-3">
-                            {user.count}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="border border-[rgba(255,255,255,0.12)] border-solid rounded-[12px] w-full overflow-hidden">
+                <div className="bg-[rgba(255,206,88,0.12)] flex gap-[16px] items-center px-[16px] py-[12px] font-urbanist font-bold text-[14px] text-[#ffce58] leading-normal">
+                  <p className="w-[80px] shrink-0 m-0">N°</p>
+                  <p className="flex-1 min-w-0 m-0">USUARIO</p>
+                  <p className="w-[200px] shrink-0 text-right m-0">ID</p>
+                </div>
+                <div
+                  className="h-[436px] overflow-y-auto"
+                  style={{ scrollbarColor: "rgba(255,255,255,0.25) transparent" }}
+                >
+                  {userCounts.map((user, index) => (
+                    <div
+                      key={`${user.username}-${user.code}`}
+                      className={`flex gap-[16px] h-[48px] items-center px-[16px] border-b border-[rgba(255,255,255,0.08)] border-solid ${
+                        index % 2 === 1 ? "bg-[rgba(255,255,255,0.04)]" : ""
+                      }`}
+                    >
+                      <p className="font-urbanist font-medium text-[16px] text-[#a9b3bf] w-[80px] shrink-0 m-0 truncate">
+                        {index + 1}
+                      </p>
+                      <p className="font-urbanist font-semibold text-[18px] text-white flex-1 min-w-0 m-0 truncate">
+                        {user.username}
+                      </p>
+                      <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] w-[200px] shrink-0 text-right m-0 truncate">
+                        {user.code}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
         )}
-      </div>
       <div
         id="fourth_page"
         className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
@@ -1044,6 +1158,24 @@ const IndexPage: React.FC = () => {
           currentPage === "fifth" ? "" : "hidden"
         }`}
       >
+        <div
+          className="absolute top-[38px] right-[90px] z-30 w-[203px] h-[44px]"
+          role="img"
+          aria-label="palmsbet.pe"
+        >
+          <img src={palmsbetPalm} alt="" className="absolute left-0 top-0" />
+          <img src={palmsbetP} alt="" className="absolute left-[51.21px] top-[15.25px]" />
+          <img src={palmsbetA} alt="" className="absolute left-[66.18px] top-[15.25px]" />
+          <img src={palmsbetL} alt="" className="absolute left-[81.67px] top-[9.67px]" />
+          <img src={palmsbetM} alt="" className="absolute left-[88.84px] top-[15.25px]" />
+          <img src={palmsbetS} alt="" className="absolute left-[112.39px] top-[15.25px]" />
+          <img src={palmsbetB} alt="" className="absolute left-[126.47px] top-[9.67px]" />
+          <img src={palmsbetE} alt="" className="absolute left-[141.58px] top-[15.25px]" />
+          <img src={palmsbetT} alt="" className="absolute left-[156.17px] top-[11.59px]" />
+          <img src={palmsbetDot} alt="" className="absolute left-[167.43px] top-[26.23px]" />
+          <img src={palmsbetP2} alt="" className="absolute left-[174.6px] top-[15.25px]" />
+          <img src={palmsbetE2} alt="" className="absolute left-[189.7px] top-[15.25px]" />
+        </div>
         {/* Botón Regresar */}
         <button
           onClick={handleRegresarFromFifth}
@@ -1070,37 +1202,126 @@ const IndexPage: React.FC = () => {
             Regresar
           </p>
         </button>
-        <div>
-        <img src={logoSvg} alt="Logo" className="w-[500px] h-auto mx-auto" />
-          <p className="font-urbanist font-bold text-[32px] text-center w-full m-0 leading-normal text-white">
+        <div className="relative z-10 flex flex-col gap-[20px] items-center">
+          <p className="font-urbanist font-bold text-[40px] text-center text-white m-0 leading-normal">
             ¡Felicidades a los ganadores!
           </p>
-          <div className="flex flex-col items-center mt-16">
-            <div className="bg-[rgba(0,0,0,0.5)] border-4 border-[#ffce58] border-solid rounded-[20px] p-8 inline-flex gap-0">
-              {winners.map((winner, index) => (
-                <div
-                  key={index}
-                  className={`relative rounded-lg px-6 py-4 flex flex-col items-center justify-center min-w-[300px] transition-opacity duration-500 ${
-                    visibleWinners[index] ? "opacity-100" : "opacity-0"
-                  }`}
-                >
-                  {index > 0 && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[1px] h-3/5 bg-white/20"></div>
-                  )}
-                  <div className="absolute bg-white border-2 border-[rgba(0,0,0,0.11)] border-solid rounded-[32px] w-[32px] h-[32px] flex items-center justify-center -top-2 left-2">
-                    <p className="font-urbanist font-medium text-[#192a44] text-[22px]">
-                      {index + 1}
-                    </p>
-                  </div>
-                  <p className="font-urbanist font-bold text-[36px] text-white text-center">
-                    {winner.username}
-                  </p>
-                  <p className="font-urbanist font-normal text-[#a9b3bf] text-[24px] text-center mt-1">
-                    {winner.code}
-                  </p>
+          <div className="bg-[rgba(0,0,0,0.5)] border-4 border-[#ffce58] border-solid rounded-[20px] shadow-[0px_0px_40px_0px_rgba(255,208,92,0.3)] flex gap-[24px] items-center px-[24px] py-[20px]">
+            <div className="bg-[rgba(0,0,0,0.35)] border-2 border-dashed border-[#ffce58] rounded-[16px] w-[160px] h-[120px] shrink-0 flex items-center justify-center px-[8px]">
+              <p className="font-urbanist font-bold text-[14px] text-center text-white m-0 leading-normal">
+                Imagen premio
+              </p>
             </div>
-          ))}
+            <div className="flex flex-col gap-[4px] items-start min-w-0">
+              <p className="font-urbanist font-semibold text-[16px] text-[#ffce58] m-0 leading-normal whitespace-nowrap">
+                GANADOR PREMIO FINAL
+              </p>
+              <p className="font-urbanist font-bold text-[40px] text-white m-0 leading-normal truncate max-w-[520px]">
+                {finalWinner?.username ?? "—"}
+              </p>
+              <p className="font-urbanist font-normal text-[20px] text-[#a9b3bf] m-0 leading-normal">
+                {finalWinner?.code ?? "--------"}
+              </p>
+              <div className="bg-[rgba(255,206,88,0.15)] border border-[#ffce58] border-solid rounded-full px-[12px] py-[4px]">
+                <p className="font-urbanist font-bold text-[18px] text-[#ffce58] m-0 leading-normal whitespace-nowrap">
+                  PlayStation 5 + GTA 5
+                </p>
+              </div>
             </div>
+          </div>
+          <p className="font-urbanist font-bold text-[24px] text-center text-white m-0 leading-normal">
+            Ganadores de S/ 100
+          </p>
+          <WinnersGrid winners={winners} visible={visibleWinners} />
+          {userCounts.length > 0 && (
+            <button
+              onClick={() => setIsTableModalOpen(true)}
+              className="font-urbanist font-bold text-[16px] text-[#f5f5f5] underline cursor-pointer bg-transparent border-0"
+            >
+              Ver participantes
+            </button>
+          )}
+        </div>
+      </div>
+      <div
+        id="final_page"
+        className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
+          currentPage === "final" ? "" : "hidden"
+        }`}
+      >
+        <img
+          src={confetti}
+          alt=""
+          className={`w-screen h-auto absolute bottom-0 left-0 pointer-events-none transition-opacity duration-500 ${
+            finalWinnerVisible ? "opacity-100" : "opacity-0"
+          }`}
+        />
+        <div className="relative z-10 flex flex-col gap-[32px] items-center">
+          <img src={logoSvg} alt="Logo" className="w-[320px] h-auto" />
+          <div className="flex flex-col gap-[4px] items-center">
+            <h2
+              className="font-urbanist font-black text-[64px] text-center m-0 leading-normal"
+              style={{
+                background: "linear-gradient(187deg, #ffed87 10%, #ffbe41 92%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
+              }}
+            >
+              PREMIO FINAL
+            </h2>
+            <p className="font-urbanist font-medium text-[28px] text-center m-0 leading-normal text-white">
+              PlayStation 5 + GTA 5
+            </p>
+          </div>
+          <div className="flex gap-[32px] items-center">
+            <div className="bg-[rgba(0,0,0,0.35)] border-2 border-dashed border-[#ffce58] rounded-[16px] w-[420px] h-[300px] shrink-0 flex flex-col gap-[8px] items-center justify-center text-center px-[24px]">
+              <p className="font-urbanist font-bold text-[22px] text-white m-0">
+                Imagen premio final
+              </p>
+              <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] m-0">
+                GTA 5 + PlayStation 5
+              </p>
+            </div>
+            <div
+              className={`bg-[rgba(0,0,0,0.5)] border-4 border-[#ffce58] border-solid rounded-[20px] shadow-[0px_0px_40px_0px_rgba(255,208,92,0.3)] w-[480px] h-[300px] shrink-0 flex flex-col gap-[12px] items-start justify-center px-[32px] overflow-hidden transition-opacity duration-500 ${
+                finalWinnerVisible ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <p className="font-urbanist font-semibold text-[20px] text-[#ffce58] m-0 leading-normal">
+                GANADOR
+              </p>
+              <p className="font-urbanist font-bold text-[48px] text-white m-0 leading-normal truncate max-w-full">
+                {finalWinner?.username ?? "—"}
+              </p>
+              <p className="font-urbanist font-normal text-[24px] text-[#a9b3bf] m-0 leading-normal">
+                {finalWinner?.code ?? "--------"}
+              </p>
+              <div className="bg-[rgba(255,206,88,0.15)] border border-[#ffce58] border-solid rounded-full px-[12px] py-[4px]">
+                <p className="font-urbanist font-bold text-[20px] text-[#ffce58] m-0 leading-normal whitespace-nowrap">
+                  PlayStation 5 + GTA 5
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-[20px] items-center">
+            <button
+              onClick={handleTerminarClick}
+              className="bg-[#006afa] flex items-center justify-center h-[60px] w-[331px] rounded-[16px] cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 shadow-[0px_0px_5px_rgba(0,106,250,0.4)]"
+            >
+              <span className="font-urbanist font-bold text-[20px] text-[#f5f5f5]">
+                FINALIZAR
+              </span>
+            </button>
+            {userCounts.length > 0 && (
+              <button
+                onClick={() => setIsTableModalOpen(true)}
+                className="font-urbanist font-semibold text-[16px] text-white underline cursor-pointer bg-transparent border-0"
+              >
+                Ver participantes
+              </button>
+            )}
           </div>
         </div>
       </div>
