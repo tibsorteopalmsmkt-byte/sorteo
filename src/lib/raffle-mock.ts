@@ -7,42 +7,94 @@ export interface JaguarWinner extends RaffleWinner {
 
 const DRAWN_AT = "2026-11-09T14:26:00Z";
 
-export const mockCampaign: Campaign = {
-  name: "Mega Sorteo Fin de Año",
-  raffles: [
-    {
-      id: "111e4567-e89b-12d3-a456-426614174001",
-      name: "Sorteo Semana 1",
-      endAt: "2026-11-07T23:59:59Z",
-      status: "CONSOLIDATED",
-      drawnAt: null,
-    },
-  ],
-};
+const WEEK_END_AT = [
+  "2026-11-07T23:59:59Z",
+  "2026-11-14T23:59:59Z",
+  "2026-11-21T23:59:59Z",
+  "2026-11-28T23:59:59Z",
+];
 
-export const mockPrizes: RafflePrize[] = [
+const PRINCIPAL_PRIZES: Array<{ id: string; name: string; winnersCount: number }> = [
   {
     id: "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
     name: "PlayStation 5 + GTA 5",
-    category: "PRINCIPAL",
-    awardOrder: 1,
     winnersCount: 1,
   },
   {
-    id: "b2c3d4e5-f6a7-8901-2345-6789abcdef01",
-    name: "S/100 para jugar",
-    category: "SECONDARY",
-    awardOrder: 2,
-    winnersCount: 10,
+    id: "d4e5f6a7-b8c9-0123-4567-89abcdef0123",
+    name: "Galaxy Tab S11 Ultra",
+    winnersCount: 1,
   },
   {
-    id: "c3d4e5f6-a7b8-9012-3456-789abcdef012",
-    name: "S/50 para jugar",
-    category: "SECONDARY",
-    awardOrder: 3,
-    winnersCount: 20,
+    id: "e5f6a7b8-c9d0-1234-5678-9abcdef01234",
+    name: "iPhone 18 Pro Max",
+    winnersCount: 1,
+  },
+  {
+    id: "f6a7b8c9-d0e1-2345-6789-abcdef012345",
+    name: "S/20,000",
+    winnersCount: 4,
   },
 ];
+
+function mockWeek(week?: number): number {
+  return week === 2 || week === 3 || week === 4 ? week : 1;
+}
+
+const WEEK_DRAWN_AT = [
+  "2026-11-09T14:26:00Z",
+  "2026-11-16T14:26:00Z",
+  "2026-11-23T14:26:00Z",
+  null,
+];
+
+export const mockCampaign: Campaign = {
+  name: "Mega Sorteo Fin de Año",
+  raffles: WEEK_END_AT.map((endAt, index) => ({
+    id: `111e4567-e89b-12d3-a456-42661417400${index + 1}`,
+    name: `Sorteo Semana ${index + 1}`,
+    endAt,
+    status: index < 3 ? ("DRAWN" as const) : ("CONSOLIDATED" as const),
+    drawnAt: WEEK_DRAWN_AT[index],
+  })),
+};
+
+export function mockRaffleForWeek(week?: number) {
+  return mockCampaign.raffles[mockWeek(week) - 1];
+}
+
+const fiftyPrize: RafflePrize = {
+  id: "c3d4e5f6-a7b8-9012-3456-789abcdef012",
+  name: "S/50 para jugar",
+  category: "SECONDARY",
+  awardOrder: 3,
+  winnersCount: 20,
+};
+
+const bonusPrize: RafflePrize = {
+  id: "b2c3d4e5-f6a7-8901-2345-6789abcdef01",
+  name: "S/100 para jugar",
+  category: "SECONDARY",
+  awardOrder: 2,
+  winnersCount: 10,
+};
+
+export function mockPrizesForWeek(week?: number): RafflePrize[] {
+  const principal = PRINCIPAL_PRIZES[mockWeek(week) - 1];
+  return [
+    {
+      id: principal.id,
+      name: principal.name,
+      category: "PRINCIPAL",
+      awardOrder: 1,
+      winnersCount: principal.winnersCount,
+    },
+    bonusPrize,
+    fiftyPrize,
+  ];
+}
+
+export const mockPrizes: RafflePrize[] = mockPrizesForWeek(1);
 
 const bonusWinners: JaguarWinner[] = [
   ["asael11", 60299914],
@@ -72,6 +124,26 @@ const principalWinner: JaguarWinner = {
   winnerType: "PRIMARY",
   selectionOrder: 1,
   winningTicketNumber: 60604072,
+  createdAt: DRAWN_AT,
+};
+
+const weekTwoPrincipal: JaguarWinner = {
+  id: "223e4567-e89b-12d3-a456-426614174011",
+  playerId: "887f6543-e21b-34d5-c678-543210987611",
+  username: "camila_gt",
+  winnerType: "PRIMARY",
+  selectionOrder: 1,
+  winningTicketNumber: 80112233,
+  createdAt: DRAWN_AT,
+};
+
+const weekThreePrincipal: JaguarWinner = {
+  id: "223e4567-e89b-12d3-a456-426614174012",
+  playerId: "887f6543-e21b-34d5-c678-543210987612",
+  username: "andre_ip",
+  winnerType: "PRIMARY",
+  selectionOrder: 1,
+  winningTicketNumber: 80223344,
   createdAt: DRAWN_AT,
 };
 
@@ -121,21 +193,28 @@ const weekFourCashWinners: JaguarWinner[] = [
   createdAt: DRAWN_AT,
 }));
 
+const principalByWeek: Record<number, JaguarWinner[]> = {
+  1: [principalWinner],
+  2: [weekTwoPrincipal],
+  3: [weekThreePrincipal],
+  4: weekFourCashWinners,
+};
+
 const draws = new Map<string, JaguarWinner[]>();
 
 export function mockWinnersForPrize(prizeId: string, week?: number): JaguarWinner[] {
-  const key = week === 4 && prizeId === mockPrizes[0].id ? `${prizeId}:week4` : prizeId;
+  const safeWeek = mockWeek(week);
+  const key = `${safeWeek}:${prizeId}`;
   const stored = draws.get(key);
   if (stored) return stored;
 
+  const prizes = mockPrizesForWeek(safeWeek);
   const winners =
-    key.endsWith(":week4")
-      ? weekFourCashWinners
-      : prizeId === mockPrizes[0].id
-        ? [principalWinner]
-        : prizeId === mockPrizes[2].id
-          ? fiftyWinners
-          : bonusWinners;
+    prizeId === prizes[0].id
+      ? principalByWeek[safeWeek]
+      : prizeId === fiftyPrize.id
+        ? fiftyWinners
+        : bonusWinners;
   draws.set(key, winners);
   return winners;
 }

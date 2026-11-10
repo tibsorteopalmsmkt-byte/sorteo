@@ -116,6 +116,26 @@ export function toShownWinners(winners: RaffleWinner[]): PrizeDrawResult["winner
     }));
 }
 
+export interface WeekRaffleStatus {
+  week: number;
+  status: RaffleSummary["status"];
+}
+
+export async function fetchWeekStatuses(): Promise<WeekRaffleStatus[]> {
+  const response = await fetch("/api/raffle");
+  const body = (await response.json().catch(() => null)) as
+    | { weeks?: WeekRaffleStatus[]; detail?: string }
+    | null;
+
+  if (!response.ok) {
+    throw new RaffleRequestError(
+      body?.detail || "No se pudo leer el estado de las semanas."
+    );
+  }
+
+  return body?.weeks ?? [];
+}
+
 export async function drawPrize(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult> {
   const response = await fetch("/api/raffle", {
     method: "POST",

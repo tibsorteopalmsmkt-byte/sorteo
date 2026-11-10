@@ -1,6 +1,11 @@
 import * as dotenv from "dotenv";
 import type { GatsbyFunctionRequest, GatsbyFunctionResponse } from "gatsby";
-import { mockCampaign, mockPrizes, mockWinnersForPrize } from "../lib/raffle-mock";
+import {
+  mockCampaign,
+  mockPrizesForWeek,
+  mockRaffleForWeek,
+  mockWinnersForPrize,
+} from "../lib/raffle-mock";
 import {
   pickDisplayedPrize,
   pickRaffle,
@@ -118,12 +123,29 @@ function resultFrom(
   };
 }
 
+async function weekStatuses(): Promise<Array<{ week: number; status: Campaign["raffles"][number]["status"] }>> {
+  const raffles = useMock()
+    ? mockCampaign.raffles
+    : (
+        await readJson<Campaign>(await jaguar("/raffles/campaign/active", "GET"))
+      ).raffles || [];
+
+  return [...raffles]
+    .sort((a, b) => Date.parse(a.endAt) - Date.parse(b.endAt))
+    .slice(0, 4)
+    .map((raffle, index) => ({
+      week: index + 1,
+      status: raffle.status,
+    }));
+}
+
 async function runDraw(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult> {
   if (useMock()) {
-    const prize = pickDisplayedPrize(mockPrizes, slot);
+    const prizes = mockPrizesForWeek(week);
+    const prize = pickDisplayedPrize(prizes, slot);
     return resultFrom(
-      mockCampaign,
-      mockPrizes,
+      { name: mockCampaign.name, raffles: [mockRaffleForWeek(week)] },
+      prizes,
       slot,
       mockWinnersForPrize(prize.id, week)
     );
@@ -159,6 +181,19 @@ export default async function handler(
   res: GatsbyFunctionResponse
 ) {
   res.setHeader("Cache-Control", "no-store");
+
+  if (req.method === "GET") {
+    try {
+      res.status(200).json({ weeks: await weekStatuses() });
+    } catch (error) {
+      const detail =
+        error instanceof RaffleRequestError
+          ? error.message
+          : "El servicio de sorteos falló. Inténtalo de nuevo.";
+      res.status(502).json({ detail });
+    }
+    return;
+  }
 
   if (req.method !== "POST") {
     res.status(405).json({ detail: "Método no permitido." });

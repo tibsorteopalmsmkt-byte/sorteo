@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import Papa from "papaparse";
-import { drawPrize, type PrizeDrawResult, type PrizeSlot } from "../lib/raffle";
+import { drawPrize, fetchWeekStatuses, type PrizeDrawResult, type PrizeSlot } from "../lib/raffle";
 
 import imgLanding1 from "../images/bg-vegas.png";
 import slotMachine from "../images/slot-machine.svg";
 import palmsBetLogo from "../images/palms_bet_logo.svg";
 import ruletaWheel from "../images/ruleta.gif";
-import RouteHome from "../components/RouteHome";
+import RouteHome, { type HomeRaffleStatus } from "../components/RouteHome";
 import WeekHub from "../components/WeekHub";
 import fondoRuta from "../images/ruta/fondo.png";
 import logoPalms from "../images/ruta/logo-palms.png";
@@ -253,6 +253,9 @@ const IndexPage: React.FC = () => {
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
   const [drawError, setDrawError] = useState<string | null>(null);
   const [activeWeek, setActiveWeek] = useState<WeekNumber>(1);
+  const [weekStatuses, setWeekStatuses] = useState<
+    Partial<Record<WeekNumber, HomeRaffleStatus>>
+  >({});
   const [drawnByWeek, setDrawnByWeek] = useState<
     Record<WeekNumber, Record<WeekPrizeId, boolean>>
   >({
@@ -310,6 +313,34 @@ const IndexPage: React.FC = () => {
     return request;
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchWeekStatuses()
+      .then((weeks) => {
+        if (cancelled) return;
+        const statuses: Partial<Record<WeekNumber, HomeRaffleStatus>> = {};
+        weeks.forEach((item) => {
+          if (item.week !== 1 && item.week !== 2 && item.week !== 3 && item.week !== 4) return;
+          statuses[item.week] = item.status;
+        });
+        setWeekStatuses(statuses);
+        setDrawnByWeek((current) => {
+          const next = { ...current };
+          (Object.keys(statuses) as unknown as WeekNumber[]).forEach((week) => {
+            if (statuses[week] !== "DRAWN") return;
+            next[week] = { fifty: true, third: true, final: true };
+          });
+          return next;
+        });
+      })
+      .catch((error) => {
+        console.error("Error al leer el estado de las semanas:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleOpenWeek = (week: WeekNumber) => {
     setActiveWeek(week);
     setCurrentPage("week");
@@ -324,20 +355,59 @@ const IndexPage: React.FC = () => {
   };
 
   const handleViewWinners = (prize: WeekPrizeId) => {
-    const saved = drawsByWeek.current[activeWeek];
-    if (prize === "fifty") {
-      setFiftyWinners(saved.fifty);
-    } else if (prize === "third") {
-      setWinners(saved.third);
-      setBonusPrizeName(saved.bonusName);
-    } else {
-      setFinalWinner(saved.final);
-      setFinalWinners(saved.finalists);
-      setFinalPrizeName(saved.finalName);
-      setFinalWinnerVisible(true);
+    const week = activeWeek;
+    const saved = drawsByWeek.current[week];
+    const ready =
+      prize === "fifty"
+        ? saved.fifty.length > 0
+        : prize === "third"
+          ? saved.third.length > 0
+          : saved.finalists.length > 0;
+
+    const show = () => {
+      const latest = drawsByWeek.current[week];
+      if (prize === "fifty") {
+        setFiftyWinners(latest.fifty);
+      } else if (prize === "third") {
+        setWinners(latest.third);
+        setBonusPrizeName(latest.bonusName);
+      } else {
+        setFinalWinner(latest.final);
+        setFinalWinners(latest.finalists);
+        setFinalPrizeName(latest.finalName);
+        setFinalWinnerVisible(true);
+      }
+      setInstantReveal(true);
+      setCurrentPage(prize);
+    };
+
+    if (ready) {
+      show();
+      return;
     }
-    setInstantReveal(true);
-    setCurrentPage(prize);
+
+    const slot: PrizeSlot =
+      prize === "final" ? "principal" : prize === "third" ? "bonus" : "fifty";
+    requestDraw(slot, week)
+      .then((result) => {
+        const latest = drawsByWeek.current[week];
+        if (prize === "fifty") {
+          latest.fifty = result.winners;
+        } else if (prize === "third") {
+          latest.third = result.winners;
+          latest.bonusName = result.prizeName;
+        } else {
+          latest.final = result.winners[0] ?? null;
+          latest.finalists = result.winners;
+          latest.finalName = result.prizeName;
+        }
+        show();
+      })
+      .catch((error: unknown) => {
+        setDrawError(
+          error instanceof Error ? error.message : "No se pudo realizar el sorteo."
+        );
+      });
   };
 
   const handleDrawBack = () => {
@@ -570,7 +640,7 @@ const IndexPage: React.FC = () => {
           currentPage === "first" ? "" : "hidden"
         }`}
       >
-        <RouteHome onOpenWeek={handleOpenWeek} />
+        <RouteHome onOpenWeek={handleOpenWeek} statuses={weekStatuses} />
       </div>
       <div
         id="week_page"

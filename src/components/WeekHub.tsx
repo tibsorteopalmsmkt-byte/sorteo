@@ -57,8 +57,12 @@ const WeekHub: React.FC<{
               <React.Fragment key={prize.id}>
                 <button
                   type="button"
-                  onClick={() => onDraw(prize.id)}
-                  aria-label={`Sortear ${prize.title}`}
+                  onClick={() =>
+                    drawn[prize.id] ? onViewWinners(prize.id) : onDraw(prize.id)
+                  }
+                  aria-label={
+                    drawn[prize.id] ? `Ver ganadores de ${prize.title}` : `Sortear ${prize.title}`
+                  }
                   className="absolute cursor-pointer border-0 bg-transparent p-0"
                   style={{ left: prize.iconLeft, top: 287, width: 230, height: 230 }}
                 >
