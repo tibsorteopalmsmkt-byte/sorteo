@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import Papa from "papaparse";
-import { drawPrize, fetchWeekStatuses, type PrizeDrawResult, type PrizeSlot } from "../lib/raffle";
+import {
+  drawPrize,
+  fetchParticipants,
+  fetchWeekStatuses,
+  type PrizeDrawResult,
+  type PrizeSlot,
+} from "../lib/raffle";
 
 import imgLanding1 from "../images/bg-vegas.png";
 import slotMachine from "../images/slot-machine.svg";
@@ -33,57 +38,18 @@ interface Winner {
   code: string;
 }
 
-interface CSVRow {
-  "Player ID": string;
-  "Player Login": string;
-}
-
 interface UserCount {
   username: string;
   code: string;
-  count: number;
+  options: number;
 }
 
 const WINNER_COUNT = 10;
 const PRIZE_LABEL = "S/ 100";
 const FINAL_PRIZE_LABEL = "PlayStation 5 + GTA 5";
 
-function loadParticipants(): Promise<UserCount[]> {
-  return fetch("/sorteo_users_7.csv")
-    .then((response) => response.text())
-    .then(
-      (csvText) =>
-        new Promise((resolve, reject) => {
-          Papa.parse<CSVRow>(csvText, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-              const counts = new Map<string, { code: string; count: number }>();
-              results.data.forEach((row) => {
-                const username = row["Player Login"]?.trim();
-                const code = row["Player ID"]?.trim();
-                if (!username || !code) return;
-                const current = counts.get(username);
-                if (current) {
-                  current.count += 1;
-                } else {
-                  counts.set(username, { code, count: 1 });
-                }
-              });
-              resolve(
-                Array.from(counts.entries())
-                  .map(([username, data]) => ({
-                    username,
-                    code: data.code,
-                    count: data.count,
-                  }))
-                  .sort((a, b) => b.count - a.count)
-              );
-            },
-            error: (error: Error) => reject(error),
-          });
-        })
-    );
+function loadParticipants(week: WeekNumber): Promise<UserCount[]> {
+  return fetchParticipants(week);
 }
 
 function WinnerCard({
@@ -232,6 +198,9 @@ const IndexPage: React.FC = () => {
 
   // Array con todos los usuarios únicos y sus conteos
   const [userCounts, setUserCounts] = useState<UserCount[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsError, setParticipantsError] = useState<string | null>(null);
+  const participantsCache = useRef<Partial<Record<WeekNumber, UserCount[]>>>({});
 
   // Estados para controlar la visibilidad de los ganadores con fade-in
   const [visibleWinners, setVisibleWinners] = useState<boolean[]>(
@@ -270,6 +239,38 @@ const IndexPage: React.FC = () => {
   const draws = useRef<Partial<Record<string, Promise<PrizeDrawResult>>>>({});
   const activeWeekRef = useRef<WeekNumber>(activeWeek);
   activeWeekRef.current = activeWeek;
+
+  const handleOpenParticipants = () => {
+    const week = activeWeek;
+    setIsTableModalOpen(true);
+    setParticipantsError(null);
+    const cached = participantsCache.current[week];
+    if (cached) {
+      setUserCounts(cached);
+      setParticipantsLoading(false);
+      return;
+    }
+
+    setUserCounts([]);
+    setParticipantsLoading(true);
+    loadParticipants(week)
+      .then((rows) => {
+        participantsCache.current[week] = rows;
+        if (activeWeekRef.current !== week) return;
+        setUserCounts(rows);
+        setParticipantsLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (activeWeekRef.current !== week) return;
+        setUserCounts([]);
+        setParticipantsLoading(false);
+        setParticipantsError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo leer la lista de participantes."
+        );
+      });
+  };
   const drawsByWeek = useRef<
     Record<
       WeekNumber,
@@ -319,19 +320,17 @@ const IndexPage: React.FC = () => {
       .then((weeks) => {
         if (cancelled) return;
         const statuses: Partial<Record<WeekNumber, HomeRaffleStatus>> = {};
+        const drawn: Partial<Record<WeekNumber, Record<WeekPrizeId, boolean>>> = {};
         weeks.forEach((item) => {
           if (item.week !== 1 && item.week !== 2 && item.week !== 3 && item.week !== 4) return;
           statuses[item.week] = item.status;
+          if (item.drawn) drawn[item.week] = item.drawn;
+          else if (item.status === "DRAWN") {
+            drawn[item.week] = { fifty: true, third: true, final: true };
+          }
         });
         setWeekStatuses(statuses);
-        setDrawnByWeek((current) => {
-          const next = { ...current };
-          (Object.keys(statuses) as unknown as WeekNumber[]).forEach((week) => {
-            if (statuses[week] !== "DRAWN") return;
-            next[week] = { fifty: true, third: true, final: true };
-          });
-          return next;
-        });
+        setDrawnByWeek((current) => ({ ...current, ...drawn }));
       })
       .catch((error) => {
         console.error("Error al leer el estado de las semanas:", error);
@@ -437,16 +436,7 @@ const IndexPage: React.FC = () => {
       animationNext === "final" ? "principal" : animationNext === "third" ? "bonus" : "fifty";
 
     const week = activeWeekRef.current;
-    const ready = (async () => {
-      if (slot === "fifty") {
-        loadParticipants()
-          .then(setUserCounts)
-          .catch((error) => {
-            console.error("Error al leer participantes:", error);
-          });
-      }
-      return requestDraw(slot, week);
-    })();
+    const ready = requestDraw(slot, week);
 
     ready
       .then(async (result) => {
@@ -575,15 +565,6 @@ const IndexPage: React.FC = () => {
     }
   }, [currentPage, alternates.length]);
 
-  useEffect(() => {
-    if (currentPage !== "week" || userCounts.length > 0) return;
-    loadParticipants()
-      .then(setUserCounts)
-      .catch((error) => {
-        console.error("Error al leer participantes:", error);
-      });
-  }, [currentPage, userCounts.length]);
-
   // Efecto para mostrar el confetti 4 segundos después de que aparezca second_page
   useEffect(() => {
     if (currentPage === "second") {
@@ -654,7 +635,7 @@ const IndexPage: React.FC = () => {
           onBack={() => setCurrentPage("first")}
           onDraw={handleDrawPrize}
           onViewWinners={handleViewWinners}
-          onParticipants={() => setIsTableModalOpen(true)}
+          onParticipants={handleOpenParticipants}
         />
       </div>
       <div
@@ -881,7 +862,11 @@ const IndexPage: React.FC = () => {
                     Participantes
                   </h3>
                   <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] m-0 leading-normal">
-                    {userCounts.length.toLocaleString("en-US")} participantes del sorteo · desliza para ver más
+                    {participantsLoading
+                      ? "Cargando participantes…"
+                      : participantsError
+                        ? participantsError
+                        : `${userCounts.length.toLocaleString("en-US")} participantes de la semana · ordenados por opciones, de mayor a menor`}
                   </p>
                 </div>
                 <button
@@ -896,7 +881,8 @@ const IndexPage: React.FC = () => {
                 <div className="bg-[rgba(255,206,88,0.12)] flex gap-[16px] items-center px-[16px] py-[12px] font-urbanist font-bold text-[14px] text-[#ffce58] leading-normal">
                   <p className="w-[80px] shrink-0 m-0">N°</p>
                   <p className="flex-1 min-w-0 m-0">USUARIO</p>
-                  <p className="w-[200px] shrink-0 text-right m-0">ID</p>
+                  <p className="w-[160px] shrink-0 text-right m-0">ID</p>
+                  <p className="w-[120px] shrink-0 text-right m-0">OPCIONES</p>
                 </div>
                 <div
                   className="h-[436px] overflow-y-auto"
@@ -915,11 +901,22 @@ const IndexPage: React.FC = () => {
                       <p className="font-urbanist font-semibold text-[18px] text-white flex-1 min-w-0 m-0 truncate">
                         {user.username}
                       </p>
-                      <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] w-[200px] shrink-0 text-right m-0 truncate">
+                      <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] w-[160px] shrink-0 text-right m-0 truncate">
                         {user.code}
+                      </p>
+                      <p className="font-urbanist font-bold text-[16px] text-[#a9b3bf] w-[120px] shrink-0 text-right m-0 truncate">
+                        {user.options.toLocaleString("en-US")}
                       </p>
                     </div>
                   ))}
+                  {participantsLoading && (
+                    <div className="flex w-full items-center justify-center gap-[8px] py-[16px]">
+                      <span className="size-[18px] animate-spin rounded-full border-2 border-[#a9b3bf] border-t-transparent" />
+                      <p className="m-0 font-urbanist text-[14px] font-medium leading-normal text-[#a9b3bf]">
+                        Cargando participantes…
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1322,9 +1319,7 @@ const IndexPage: React.FC = () => {
                       </p>
                       <div className="rounded-full border border-solid border-[#ffce58] bg-[rgba(255,206,88,0.15)] px-[12px] py-[4px]">
                         <p className="m-0 whitespace-nowrap font-urbanist text-[20px] font-bold leading-normal text-[#ffce58]">
-                          {activeWeek === 1
-                            ? finalPrizeName || FINAL_PRIZE_LABEL
-                            : getWeek(activeWeek).finalPrizeLabel}
+                          {getWeek(activeWeek).finalPrizeLabel}
                         </p>
                       </div>
                     </div>
