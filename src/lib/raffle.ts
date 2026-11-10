@@ -17,6 +17,7 @@ export interface RafflePrize {
   category: "PRINCIPAL" | "SECONDARY";
   awardOrder: number;
   winnersCount: number;
+  status?: "PENDING" | "CONSOLIDATED" | "DRAWN" | "CANCELLED";
   desktopImageUrl?: string;
 }
 
@@ -44,6 +45,22 @@ export class RaffleRequestError extends Error {
     super(message);
     this.name = "RaffleRequestError";
   }
+}
+
+export function raffleForWeek(raffles: RaffleSummary[], week: number): RaffleSummary {
+  if (week !== 1 && week !== 2 && week !== 3 && week !== 4) {
+    throw new RaffleRequestError("La semana indicada no existe.");
+  }
+
+  const raffle = [...raffles].sort(
+    (a, b) => Date.parse(a.endAt) - Date.parse(b.endAt)
+  )[week - 1];
+
+  if (!raffle) {
+    throw new RaffleRequestError("La semana indicada no existe en la campaña.");
+  }
+
+  return raffle;
 }
 
 export function pickRaffle(raffles: RaffleSummary[]): RaffleSummary {
@@ -116,9 +133,37 @@ export function toShownWinners(winners: RaffleWinner[]): PrizeDrawResult["winner
     }));
 }
 
+export interface WeekPrizeDrawn {
+  fifty: boolean;
+  third: boolean;
+  final: boolean;
+}
+
 export interface WeekRaffleStatus {
   week: number;
   status: RaffleSummary["status"];
+  drawn?: WeekPrizeDrawn;
+}
+
+export interface RaffleParticipant {
+  username: string;
+  code: string;
+  options: number;
+}
+
+export async function fetchParticipants(week: number): Promise<RaffleParticipant[]> {
+  const response = await fetch(`/api/raffle?participants=1&week=${week}`);
+  const body = (await response.json().catch(() => null)) as
+    | { participants?: RaffleParticipant[]; detail?: string }
+    | null;
+
+  if (!response.ok) {
+    throw new RaffleRequestError(
+      body?.detail || "No se pudo leer la lista de participantes."
+    );
+  }
+
+  return body?.participants ?? [];
 }
 
 export async function fetchWeekStatuses(): Promise<WeekRaffleStatus[]> {

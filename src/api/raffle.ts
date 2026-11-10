@@ -10,6 +10,7 @@ import {
   pickDisplayedPrize,
   pickRaffle,
   prizeLabel,
+  raffleForWeek,
   RaffleRequestError,
   toShownWinners,
   type Campaign,
@@ -19,30 +20,34 @@ import {
   type RaffleWinner,
 } from "../lib/raffle";
 
-dotenv.config({ path: `.env`, override: true });
+const envFile = dotenv.config({ path: `.env`, override: true });
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function envValue(name: string): string {
+  return envFile.parsed?.[name] || process.env[name] || "";
+}
+
 function useMock(): boolean {
-  const flag = process.env.JAGUAR_USE_MOCK;
+  const flag = envValue("JAGUAR_USE_MOCK");
   if (flag === "false") return false;
   if (flag === "true") return true;
-  return !process.env.JAGUAR_API_KEY;
+  return !envValue("JAGUAR_API_KEY");
 }
 
 function apiBaseUrl(): string {
   return (
-    process.env.JAGUAR_API_BASE_URL ||
+    envValue("JAGUAR_API_BASE_URL") ||
     "https://qa-api-jaguar-core.palms-peru-pe.com/core/v1"
   ).replace(/\/$/, "");
 }
 
 async function jaguar(path: string, method: "GET" | "POST"): Promise<Response> {
-  const apiKey = process.env.JAGUAR_API_KEY;
+  const apiKey = envValue("JAGUAR_API_KEY");
   if (!apiKey) {
     throw new RaffleRequestError(
-      "Falta JAGUAR_API_KEY en el servidor. Agrégala al .env."
+      "Falta JAGUAR_API_KEY en el servidor."
     );
   }
 
@@ -50,7 +55,9 @@ async function jaguar(path: string, method: "GET" | "POST"): Promise<Response> {
     return await fetch(`${apiBaseUrl()}${path}`, {
       method,
       headers: {
-        Accept: "application/json",
+        // El POST de ganadores no declara application/json en @Produces.
+        // Accept: application/json responde 406 antes de sortear.
+        Accept: method === "POST" ? "*/*" : "application/json",
         "X-API-Key": apiKey,
       },
     });
@@ -92,20 +99,26 @@ async function winnersForPrize(
     throw new RaffleRequestError("El premio recibido no tiene un identificador válido.");
   }
 
+  const path = `/raffles/prizes/${prizeId}/winners`;
   if (mode === "read") {
-    return readJson<RaffleWinner[]>(
-      await jaguar(`/raffles/prizes/${prizeId}/winners`, "GET")
+    return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
+  }
+
+  const response = await jaguar(path, "POST");
+  if (response.status === 409 || response.status === 204) {
+    return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
+  }
+  if (!response.ok) {
+    throw new RaffleRequestError(
+      failureMessage(response.status, await problemDetail(response))
     );
   }
 
-  const response = await jaguar(`/raffles/prizes/${prizeId}/winners`, "POST");
-  if (response.status === 409) {
-    return readJson<RaffleWinner[]>(
-      await jaguar(`/raffles/prizes/${prizeId}/winners`, "GET")
-    );
+  const text = await response.text();
+  if (!text.trim()) {
+    return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
   }
-
-  return readJson<RaffleWinner[]>(response);
+  return JSON.parse(text) as RaffleWinner[];
 }
 
 function resultFrom(
@@ -123,20 +136,94 @@ function resultFrom(
   };
 }
 
-async function weekStatuses(): Promise<Array<{ week: number; status: Campaign["raffles"][number]["status"] }>> {
+function prizeDrawn(raffleStatus: RafflePrize["status"], prize?: RafflePrize): boolean {
+  return raffleStatus === "DRAWN" || prize?.status === "DRAWN";
+}
+
+function drawnFlags(raffleStatus: RafflePrize["status"], prizes: RafflePrize[]) {
+  const prizeFor = (slot: PrizeSlot) => {
+    try {
+      return pickDisplayedPrize(prizes, slot);
+    } catch {
+      return undefined;
+    }
+  };
+
+  return {
+    fifty: prizeDrawn(raffleStatus, prizeFor("fifty")),
+    third: prizeDrawn(raffleStatus, prizeFor("bonus")),
+    final: prizeDrawn(raffleStatus, prizeFor("principal")),
+  };
+}
+
+async function weekStatuses(): Promise<
+  Array<{
+    week: number;
+    status: Campaign["raffles"][number]["status"];
+    drawn: { fifty: boolean; third: boolean; final: boolean };
+  }>
+> {
   const raffles = useMock()
     ? mockCampaign.raffles
     : (
         await readJson<Campaign>(await jaguar("/raffles/campaign/active", "GET"))
       ).raffles || [];
 
-  return [...raffles]
+  const ordered = [...raffles]
     .sort((a, b) => Date.parse(a.endAt) - Date.parse(b.endAt))
-    .slice(0, 4)
-    .map((raffle, index) => ({
-      week: index + 1,
-      status: raffle.status,
-    }));
+    .slice(0, 4);
+
+  return Promise.all(
+    ordered.map(async (raffle, index) => {
+      const prizes = useMock()
+        ? mockPrizesForWeek(index + 1)
+        : await readJson<RafflePrize[]>(
+            await jaguar(`/raffles/${raffle.id}/prizes`, "GET")
+          );
+
+      return {
+        week: index + 1,
+        status: raffle.status,
+        drawn: drawnFlags(raffle.status, prizes),
+      };
+    })
+  );
+}
+
+interface JaguarParticipant {
+  playerId: number;
+  username: string;
+  validTicketsCount: number;
+}
+
+async function participantsForWeek(week: number) {
+  if (week !== 1 && week !== 2 && week !== 3 && week !== 4) {
+    throw new RaffleRequestError("La semana indicada no existe.");
+  }
+
+  if (useMock()) return [];
+
+  const campaign = await readJson<Campaign>(
+    await jaguar("/raffles/campaign/active", "GET")
+  );
+  const raffle = raffleForWeek(campaign.raffles || [], week);
+  if (!UUID.test(raffle.id)) {
+    throw new RaffleRequestError("El sorteo recibido no tiene un identificador válido.");
+  }
+
+  const rows = await readJson<JaguarParticipant[]>(
+    await jaguar(`/raffles/${raffle.id}/participants`, "GET")
+  );
+
+  return rows
+    .map((row) => ({
+      username: row.username,
+      code: String(row.playerId),
+      options: row.validTicketsCount,
+    }))
+    .sort(
+      (a, b) => b.options - a.options || a.username.localeCompare(b.username, "es")
+    );
 }
 
 async function runDraw(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult> {
@@ -151,10 +238,18 @@ async function runDraw(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult>
     );
   }
 
+  if (week !== 1 && week !== 2 && week !== 3 && week !== 4) {
+    throw new RaffleRequestError("La semana indicada no existe.");
+  }
+
   const campaign = await readJson<Campaign>(
     await jaguar("/raffles/campaign/active", "GET")
   );
-  const raffle = pickRaffle(campaign.raffles || []);
+  const raffle = raffleForWeek(campaign.raffles || [], week);
+
+  if (raffle.status === "PENDING" || raffle.status === "CANCELLED") {
+    throw new RaffleRequestError("Esta semana todavía no está lista para sortear.");
+  }
 
   if (!UUID.test(raffle.id)) {
     throw new RaffleRequestError("El sorteo recibido no tiene un identificador válido.");
@@ -164,10 +259,8 @@ async function runDraw(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult>
     await jaguar(`/raffles/${raffle.id}/prizes`, "GET")
   );
   const prize = pickDisplayedPrize(prizes, slot);
-  const winners = await winnersForPrize(
-    prize.id,
-    raffle.status === "DRAWN" ? "read" : "draw"
-  );
+  const mode = prizeDrawn(raffle.status, prize) ? "read" : "draw";
+  const winners = await winnersForPrize(prize.id, mode);
 
   return {
     raffleName: raffle.name,
@@ -181,6 +274,20 @@ export default async function handler(
   res: GatsbyFunctionResponse
 ) {
   res.setHeader("Cache-Control", "no-store");
+
+  if (req.method === "GET" && req.query.participants === "1") {
+    const week = Number(req.query.week);
+    try {
+      res.status(200).json({ participants: await participantsForWeek(week) });
+    } catch (error) {
+      const detail =
+        error instanceof RaffleRequestError
+          ? error.message
+          : "El servicio de sorteos falló. Inténtalo de nuevo.";
+      res.status(502).json({ detail });
+    }
+    return;
+  }
 
   if (req.method === "GET") {
     try {
