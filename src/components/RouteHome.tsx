@@ -11,7 +11,10 @@ import regaloS4 from "../images/ruta/regalo-s4.png";
 import regaloS4Premio from "../images/ruta/regalo-s4-premio.png";
 import pillSemana from "../images/ruta/pill-semana.png";
 import barraSemana from "../images/ruta/barra-semana.png";
+import iconCheck from "../images/ruta/icon-check.svg";
 import type { WeekNumber } from "../lib/weeks";
+
+export type HomeRaffleStatus = "PENDING" | "CONSOLIDATED" | "DRAWN" | "CANCELLED";
 
 type WeekCard = {
   week: WeekNumber;
@@ -97,9 +100,13 @@ const weeks: WeekCard[] = [
 
 function WeekButton({
   week,
+  colored,
+  drawn,
   onClick,
 }: {
   week: WeekCard;
+  colored: boolean;
+  drawn: boolean;
   onClick?: () => void;
 }) {
   const center = week.left + week.size / 2;
@@ -125,13 +132,24 @@ function WeekButton({
         className="pointer-events-none absolute left-0 top-0 max-w-none object-cover"
         style={{ width: week.size, height: week.size }}
       />
-      {week.prize && (
+      {week.prize && !colored && (
         <img
           src={week.prize}
           alt=""
           className="pointer-events-none absolute left-0 top-0 max-w-none object-cover opacity-100 transition-opacity duration-300 group-hover:opacity-0 group-focus-visible:opacity-0"
           style={{ width: week.size, height: week.size }}
         />
+      )}
+      {drawn && (
+        <div
+          className="pointer-events-none absolute z-10 flex h-[28px] items-center gap-[4px] rounded-[21px] bg-[#e9ffea] px-[8px] py-[2px]"
+          style={{ left: week.size * 0.5, top: week.size * 0.06 }}
+        >
+          <img src={iconCheck} alt="" width={14} height={14} />
+          <span className="font-urbanist text-[16px] font-semibold leading-none text-[#4caf50]">
+            Sorteado
+          </span>
+        </div>
       )}
       <img
         src={week.badge}
@@ -167,7 +185,15 @@ function WeekButton({
   );
 }
 
-const RouteHome: React.FC<{ onOpenWeek: (week: WeekNumber) => void }> = ({ onOpenWeek }) => {
+const RouteHome: React.FC<{
+  onOpenWeek: (week: WeekNumber) => void;
+  statuses: Partial<Record<WeekNumber, HomeRaffleStatus>>;
+}> = ({ onOpenWeek, statuses }) => {
+  const known = Object.keys(statuses).length > 0;
+  const currentWeek = ([1, 2, 3, 4] as WeekNumber[]).find(
+    (week) => statuses[week] === "CONSOLIDATED"
+  );
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#192a44]">
       <img
@@ -187,13 +213,19 @@ const RouteHome: React.FC<{ onOpenWeek: (week: WeekNumber) => void }> = ({ onOpe
           alt="La Ruta Palms. Juega, acumula opciones diarias y gana cada semana"
           className="absolute left-[40px] top-[196px] h-[440px] w-[447px] max-w-none object-cover"
         />
-        {weeks.map((week) => (
-          <WeekButton
-            key={week.label}
-            week={week}
-            onClick={() => onOpenWeek(week.week)}
-          />
-        ))}
+        {weeks.map((week) => {
+          const drawn = statuses[week.week] === "DRAWN";
+          const colored = known ? drawn || week.week === currentWeek : !week.prize;
+          return (
+            <WeekButton
+              key={week.label}
+              week={week}
+              colored={colored}
+              drawn={drawn}
+              onClick={() => onOpenWeek(week.week)}
+            />
+          );
+        })}
       </div>
       </div>
     </div>
