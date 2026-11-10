@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Papa from "papaparse";
-import { saveSorteoResults } from "../lib/firestore";
+import { drawPrize, type PrizeDrawResult, type PrizeSlot } from "../lib/raffle";
 
 import imgLanding1 from "../images/bg-vegas.png";
 import slotMachine from "../images/slot-machine.svg";
 import palmsBetLogo from "../images/palms_bet_logo.svg";
-import vegasBanner from "../images/vegas.png";
-import ruleta from "../images/ruleta.png";
 import ruletaWheel from "../images/ruleta.gif";
+import RouteHome from "../components/RouteHome";
+import WeekHub from "../components/WeekHub";
+import fondoRuta from "../images/ruta/fondo.png";
+import logoPalms from "../images/ruta/logo-palms.png";
 import confetti from "../images/confetti.gif";
+import { getWeek, type WeekNumber, type WeekPrizeId } from "../lib/weeks";
 import logoSvg from "../images/logo.svg";
 import iconX from "../images/icon-x.svg";
 import palmsbetPalm from "../images/palmsbet/03302.svg";
@@ -43,21 +46,66 @@ interface UserCount {
 
 const WINNER_COUNT = 10;
 const PRIZE_LABEL = "S/ 100";
+const FINAL_PRIZE_LABEL = "PlayStation 5 + GTA 5";
+
+function loadParticipants(): Promise<UserCount[]> {
+  return fetch("/sorteo_users_7.csv")
+    .then((response) => response.text())
+    .then(
+      (csvText) =>
+        new Promise((resolve, reject) => {
+          Papa.parse<CSVRow>(csvText, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              const counts = new Map<string, { code: string; count: number }>();
+              results.data.forEach((row) => {
+                const username = row["Player Login"]?.trim();
+                const code = row["Player ID"]?.trim();
+                if (!username || !code) return;
+                const current = counts.get(username);
+                if (current) {
+                  current.count += 1;
+                } else {
+                  counts.set(username, { code, count: 1 });
+                }
+              });
+              resolve(
+                Array.from(counts.entries())
+                  .map(([username, data]) => ({
+                    username,
+                    code: data.code,
+                    count: data.count,
+                  }))
+                  .sort((a, b) => b.count - a.count)
+              );
+            },
+            error: (error: Error) => reject(error),
+          });
+        })
+    );
+}
 
 function WinnerCard({
   position,
   username,
   code,
   revealed,
+  prizeLabel = PRIZE_LABEL,
+  compact = false,
 }: {
   position: number;
   username: string;
   code: string;
   revealed: boolean;
+  prizeLabel?: string;
+  compact?: boolean;
 }) {
   return (
     <div
-      className={`flex min-w-0 flex-1 flex-col gap-[8px] items-start p-[16px] relative rounded-[16px] border-2 border-solid transition-all duration-500 ${
+      className={`flex min-w-0 flex-1 flex-col items-start relative rounded-[16px] border-2 border-solid transition-all duration-500 ${
+        compact ? "gap-[2px] px-[12px] py-[8px]" : "gap-[8px] p-[16px]"
+      } ${
         revealed
           ? "bg-[rgba(0,0,0,0.5)] border-[#ffce58] drop-shadow-[0px_0px_10px_rgba(255,208,92,0.3)]"
           : "bg-[rgba(0,0,0,0.3)] border-[rgba(255,255,255,0.2)]"
@@ -79,18 +127,22 @@ function WinnerCard({
           }`}
         >
           <p className="font-urbanist font-bold leading-[normal] text-[#ffce58] text-[16px] whitespace-nowrap">
-            {PRIZE_LABEL}
+            {prizeLabel}
           </p>
         </div>
       </div>
       <p
-        className={`font-urbanist font-bold leading-[normal] text-[24px] truncate w-full ${
-          revealed ? "text-white" : "text-[#a9b3bf]"
-        }`}
+        className={`font-urbanist font-bold leading-[normal] truncate w-full ${
+          compact ? "text-[20px]" : "text-[24px]"
+        } ${revealed ? "text-white" : "text-[#a9b3bf]"}`}
       >
         {revealed ? username : "? ? ?"}
       </p>
-      <p className="font-urbanist font-normal leading-[normal] text-[#a9b3bf] text-[16px] whitespace-nowrap">
+      <p
+        className={`font-urbanist font-normal leading-[normal] text-[#a9b3bf] whitespace-nowrap ${
+          compact ? "text-[14px]" : "text-[16px]"
+        }`}
+      >
         {revealed ? code : "--------"}
       </p>
     </div>
@@ -100,16 +152,29 @@ function WinnerCard({
 function WinnersGrid({
   winners,
   visible,
+  rows = 2,
+  columns = 5,
+  prizeLabel = PRIZE_LABEL,
+  compact = false,
+  gap = 16,
 }: {
   winners: Winner[];
   visible: boolean[];
+  rows?: number;
+  columns?: number;
+  prizeLabel?: string;
+  compact?: boolean;
+  gap?: number;
 }) {
   return (
-    <div className="flex flex-col gap-[16px] w-[1100px] max-w-[calc(100vw-48px)]">
-      {[0, 1].map((row) => (
+    <div
+      className="flex flex-col w-[1100px] max-w-[calc(100vw-48px)]"
+      style={{ gap }}
+    >
+      {Array.from({ length: rows }, (_, row) => (
         <div key={row} className="flex gap-[16px] w-full">
-          {Array.from({ length: 5 }, (_, column) => {
-            const index = row * 5 + column;
+          {Array.from({ length: columns }, (_, column) => {
+            const index = row * columns + column;
             const winner = winners[index];
             return (
               <WinnerCard
@@ -118,6 +183,8 @@ function WinnersGrid({
                 username={winner?.username ?? ""}
                 code={winner?.code ?? ""}
                 revealed={Boolean(visible[index] && winner)}
+                prizeLabel={prizeLabel}
+                compact={compact}
               />
             );
           })}
@@ -129,13 +196,15 @@ function WinnersGrid({
 
 const IndexPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<
-    "first" | "second" | "third" | "fourth" | "fifth" | "final"
+    "first" | "week" | "second" | "fifty" | "third" | "fourth" | "fifth" | "final"
   >("first");
-  const [animationNext, setAnimationNext] = useState<"third" | "final">("third");
+  const [animationNext, setAnimationNext] = useState<"fifty" | "third" | "final">("fifty");
   const [spinKey, setSpinKey] = useState(0);
   const [finalWinner, setFinalWinner] = useState<Winner | null>(null);
+  const [finalWinners, setFinalWinners] = useState<Winner[]>([]);
   const [finalWinnerVisible, setFinalWinnerVisible] = useState(false);
-  const [showWinnerActions, setShowWinnerActions] = useState(false);
+  const [fiftyWinners, setFiftyWinners] = useState<Winner[]>([]);
+  const [visibleFifty, setVisibleFifty] = useState<boolean[]>([]);
 
   // Datos de ganadores (10 ganadores) - se actualizarán desde el CSV
   const [winners, setWinners] = useState<Winner[]>(
@@ -182,6 +251,40 @@ const IndexPage: React.FC = () => {
 
   // Estado para controlar la visibilidad del confetti
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
+  const [drawError, setDrawError] = useState<string | null>(null);
+  const [activeWeek, setActiveWeek] = useState<WeekNumber>(1);
+  const [drawnByWeek, setDrawnByWeek] = useState<
+    Record<WeekNumber, Record<WeekPrizeId, boolean>>
+  >({
+    1: { fifty: false, third: false, final: false },
+    2: { fifty: false, third: false, final: false },
+    3: { fifty: false, third: false, final: false },
+    4: { fifty: false, third: false, final: false },
+  });
+  const [instantReveal, setInstantReveal] = useState(false);
+  const [bonusPrizeName, setBonusPrizeName] = useState("");
+  const [finalPrizeName, setFinalPrizeName] = useState("");
+  const draws = useRef<Partial<Record<string, Promise<PrizeDrawResult>>>>({});
+  const activeWeekRef = useRef<WeekNumber>(activeWeek);
+  activeWeekRef.current = activeWeek;
+  const drawsByWeek = useRef<
+    Record<
+      WeekNumber,
+      {
+        fifty: Winner[];
+        third: Winner[];
+        final: Winner | null;
+        finalists: Winner[];
+        bonusName: string;
+        finalName: string;
+      }
+    >
+  >({
+    1: { fifty: [], third: [], final: null, finalists: [], bonusName: "", finalName: "" },
+    2: { fifty: [], third: [], final: null, finalists: [], bonusName: "", finalName: "" },
+    3: { fifty: [], third: [], final: null, finalists: [], bonusName: "", finalName: "" },
+    4: { fifty: [], third: [], final: null, finalists: [], bonusName: "", finalName: "" },
+  });
 
   const truncateUsername = (username: string, maxLength: number = 8): string => {
     if (username.length <= maxLength) return username;
@@ -194,45 +297,54 @@ const IndexPage: React.FC = () => {
     return truncated + "...";
   };
 
-  const handleStartClick = () => {
-    setAnimationNext("third");
+  const requestDraw = (slot: PrizeSlot, week: WeekNumber): Promise<PrizeDrawResult> => {
+    const key = `${week}:${slot}`;
+    const current = draws.current[key];
+    if (current) return current;
+
+    const request = drawPrize(slot, week).catch((error: unknown) => {
+      delete draws.current[key];
+      throw error;
+    });
+    draws.current[key] = request;
+    return request;
+  };
+
+  const handleOpenWeek = (week: WeekNumber) => {
+    setActiveWeek(week);
+    setCurrentPage("week");
+  };
+
+  const handleDrawPrize = (prize: WeekPrizeId) => {
+    setDrawError(null);
+    if (prize === "final") setFinalWinnerVisible(false);
+    setAnimationNext(prize);
     setSpinKey((key) => key + 1);
     setCurrentPage("second");
   };
 
-  const handleSorteoPremioFinalClick = () => {
-    const excluded = new Set(winners.map((winner) => winner.username));
-    const pool: Winner[] = [];
-    userCounts.forEach((user) => {
-      if (excluded.has(user.username)) return;
-      for (let i = 0; i < user.count; i++) {
-        pool.push({ username: user.username, code: user.code });
-      }
-    });
-
-    if (pool.length > 0) {
-      const randomValues = new Uint32Array(1);
-      if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
-        window.crypto.getRandomValues(randomValues);
-      } else {
-        randomValues[0] = Math.floor(Math.random() * 0xffffffff);
-      }
-      const selected = pool[Number(randomValues[0]) % pool.length];
-      setFinalWinner(selected);
-      saveSorteoResults(
-        winners,
-        alternates,
-        userCounts.length,
-        selected
-      ).catch((error) => {
-        console.error("Error al guardar el premio final:", error);
-      });
+  const handleViewWinners = (prize: WeekPrizeId) => {
+    const saved = drawsByWeek.current[activeWeek];
+    if (prize === "fifty") {
+      setFiftyWinners(saved.fifty);
+    } else if (prize === "third") {
+      setWinners(saved.third);
+      setBonusPrizeName(saved.bonusName);
+    } else {
+      setFinalWinner(saved.final);
+      setFinalWinners(saved.finalists);
+      setFinalPrizeName(saved.finalName);
+      setFinalWinnerVisible(true);
     }
+    setInstantReveal(true);
+    setCurrentPage(prize);
+  };
 
-    setFinalWinnerVisible(false);
-    setAnimationNext("final");
-    setSpinKey((key) => key + 1);
-    setCurrentPage("second");
+  const handleDrawBack = () => {
+    setDrawError(null);
+    if (animationNext === "final") setCurrentPage("third");
+    else if (animationNext === "third") setCurrentPage("fifty");
+    else setCurrentPage("week");
   };
 
   const handleTerminarClick = () => {
@@ -247,245 +359,105 @@ const IndexPage: React.FC = () => {
     setCurrentPage("third");
   };
 
-  // Función para seleccionar elementos aleatorios de un array usando crypto.getRandomValues()
-  // Algoritmo Fisher-Yates para una aleatoriedad criptográficamente segura
-  const getRandomElements = <T,>(array: T[], count: number): T[] => {
-    if (count >= array.length) {
-      return [...array];
-    }
-    
-    const result: T[] = [];
-    const available = [...array];
-    
-    // Usar crypto.getRandomValues() para obtener números aleatorios seguros
-    const randomValues = new Uint32Array(count);
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-      window.crypto.getRandomValues(randomValues);
-    } else {
-      // Fallback a Math.random() si crypto no está disponible (muy raro en navegadores modernos)
-      for (let i = 0; i < count; i++) {
-        randomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
-      }
-    }
-    
-    // Algoritmo Fisher-Yates para seleccionar elementos aleatorios
-    for (let i = 0; i < count; i++) {
-      // Convertir el valor aleatorio a un índice válido
-      const randomIndex = Number(randomValues[i]) % available.length;
-      
-      // Mover el elemento seleccionado al resultado
-      result.push(available[randomIndex]);
-      
-      // Remover el elemento seleccionado del array disponible
-      // (intercambiar con el último y hacer pop para eficiencia O(1))
-      [available[randomIndex], available[available.length - 1]] = 
-        [available[available.length - 1], available[randomIndex]];
-      available.pop();
-    }
-    
-    return result;
-  };
-
-  // Efecto para leer y procesar el CSV cuando estamos en second_page
   useEffect(() => {
-    if (currentPage === "second") {
-      if (animationNext === "third") {
-      // Leer el CSV
-      fetch("/sorteo_users_7.csv")
-        .then((response) => response.text())
-        .then((csvText) => {
-          Papa.parse<CSVRow>(csvText, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-              const rows = results.data.filter(
-                (row) => row["Player Login"] && row["Player ID"]
-              );
+    if (currentPage !== "second") return;
+    let cancelled = false;
+    const started = Date.now();
+    const slot: PrizeSlot =
+      animationNext === "final" ? "principal" : animationNext === "third" ? "bonus" : "fifty";
 
-              // Contar cuántas veces aparece cada usuario
-              const userCountMap = new Map<string, { code: string; count: number }>();
-
-              rows.forEach((row) => {
-                const username = row["Player Login"].trim();
-                const code = row["Player ID"].trim();
-
-                if (username && code) {
-                  if (userCountMap.has(username)) {
-                    userCountMap.get(username)!.count++;
-                  } else {
-                    userCountMap.set(username, { code, count: 1 });
-                  }
-                }
-              });
-
-              // Crear array de usuarios únicos con sus conteos
-              const userCountsArray: UserCount[] = Array.from(userCountMap.entries()).map(
-                ([username, data]) => ({
-                  username,
-                  code: data.code,
-                  count: data.count,
-                })
-              );
-
-              // Ordenar por cantidad de participaciones de mayor a menor
-              userCountsArray.sort((a, b) => b.count - a.count);
-
-              setUserCounts(userCountsArray);
-
-              // Crear un array donde cada usuario aparece tantas veces como participaciones tenga
-              // Esto hace que la probabilidad de selección sea proporcional a las participaciones
-              const weightedUsersArray: Winner[] = [];
-              userCountsArray.forEach((user) => {
-                for (let i = 0; i < user.count; i++) {
-                  weightedUsersArray.push({
-                    username: user.username,
-                    code: user.code,
-                  });
-                }
-              });
-
-              // Seleccionar 10 ganadores únicos con probabilidad proporcional a participaciones
-              const winnersData: Winner[] = [];
-              const selectedUsernames = new Set<string>();
-              const availableWeighted = [...weightedUsersArray];
-              
-              // Obtener números aleatorios seguros para todas las selecciones
-              const randomValues = new Uint32Array(WINNER_COUNT);
-              if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-                window.crypto.getRandomValues(randomValues);
-              } else {
-                for (let i = 0; i < WINNER_COUNT; i++) {
-                  randomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
-                }
-              }
-
-              // Seleccionar 10 ganadores únicos
-              for (let i = 0; i < WINNER_COUNT && availableWeighted.length > 0; i++) {
-                // Filtrar usuarios ya seleccionados
-                const available = availableWeighted.filter(
-                  (user) => !selectedUsernames.has(user.username)
-                );
-                
-                if (available.length === 0) break;
-                
-                // Seleccionar un índice aleatorio del array disponible
-                const randomIndex = Number(randomValues[i]) % available.length;
-                const selected = available[randomIndex];
-                
-                winnersData.push(selected);
-                selectedUsernames.add(selected.username);
-                
-                // Remover todas las ocurrencias de este usuario del array ponderado
-                // para evitar seleccionarlo de nuevo
-                for (let j = availableWeighted.length - 1; j >= 0; j--) {
-                  if (availableWeighted[j].username === selected.username) {
-                    availableWeighted.splice(j, 1);
-                  }
-                }
-              }
-
-              setWinners(winnersData);
-
-              // Seleccionar 12 suplentes únicos que NO sean ganadores
-              // También con probabilidad proporcional a participaciones
-              const winnerUsernames = new Set(winnersData.map((w) => w.username));
-              
-              // Crear array ponderado de suplentes (excluyendo ganadores)
-              const weightedAlternatesArray: Winner[] = [];
-              userCountsArray.forEach((user) => {
-                // Solo incluir usuarios que NO sean ganadores
-                if (!winnerUsernames.has(user.username)) {
-                  for (let i = 0; i < user.count; i++) {
-                    weightedAlternatesArray.push({
-                      username: user.username,
-                      code: user.code,
-                    });
-                  }
-                }
-              });
-
-              // Seleccionar 12 suplentes únicos con probabilidad proporcional a participaciones
-              const alternatesData: Winner[] = [];
-              const selectedAlternateUsernames = new Set<string>();
-              const availableAlternatesWeighted = [...weightedAlternatesArray];
-              
-              // Obtener números aleatorios seguros para todas las selecciones de suplentes
-              const alternateRandomValues = new Uint32Array(12);
-              if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-                window.crypto.getRandomValues(alternateRandomValues);
-              } else {
-                for (let i = 0; i < 12; i++) {
-                  alternateRandomValues[i] = Math.floor(Math.random() * 0xFFFFFFFF);
-                }
-              }
-
-              // Seleccionar 12 suplentes únicos
-              for (let i = 0; i < 12 && availableAlternatesWeighted.length > 0; i++) {
-                // Filtrar usuarios ya seleccionados
-                const available = availableAlternatesWeighted.filter(
-                  (user) => !selectedAlternateUsernames.has(user.username)
-                );
-                
-                if (available.length === 0) break;
-                
-                // Seleccionar un índice aleatorio del array disponible
-                const randomIndex = Number(alternateRandomValues[i]) % available.length;
-                const selected = available[randomIndex];
-                
-                alternatesData.push(selected);
-                selectedAlternateUsernames.add(selected.username);
-                
-                // Remover todas las ocurrencias de este usuario del array ponderado
-                // para evitar seleccionarlo de nuevo
-                for (let j = availableAlternatesWeighted.length - 1; j >= 0; j--) {
-                  if (availableAlternatesWeighted[j].username === selected.username) {
-                    availableAlternatesWeighted.splice(j, 1);
-                  }
-                }
-              }
-
-              setAlternates(alternatesData);
-
-              // Guardar resultados en Firebase
-              saveSorteoResults(
-                winnersData,
-                alternatesData,
-                userCountsArray.length
-              ).catch((error) => {
-                console.error("Error al guardar en Firebase:", error);
-              });
-            },
-            error: (error: Error) => {
-              console.error("Error al parsear CSV:", error);
-            },
+    const week = activeWeekRef.current;
+    const ready = (async () => {
+      if (slot === "fifty") {
+        loadParticipants()
+          .then(setUserCounts)
+          .catch((error) => {
+            console.error("Error al leer participantes:", error);
           });
-        })
-        .catch((error) => {
-          console.error("Error al leer CSV:", error);
-        });
       }
+      return requestDraw(slot, week);
+    })();
 
-      const timer = setTimeout(() => {
+    ready
+      .then(async (result) => {
+        const remaining = Math.max(0, 9000 - (Date.now() - started));
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+        if (cancelled) return;
+        const saved = drawsByWeek.current[week];
+        if (slot === "fifty") {
+          saved.fifty = result.winners;
+          setFiftyWinners(result.winners);
+        } else if (slot === "bonus") {
+          saved.third = result.winners;
+          saved.bonusName = result.prizeName;
+          setWinners(result.winners);
+          setBonusPrizeName(result.prizeName);
+        } else {
+          saved.final = result.winners[0] ?? null;
+          saved.finalists = result.winners;
+          saved.finalName = result.prizeName;
+          setFinalWinner(result.winners[0] ?? null);
+          setFinalWinners(result.winners);
+          setFinalPrizeName(result.prizeName);
+          setFinalWinnerVisible(false);
+        }
+        setDrawnByWeek((current) => ({
+          ...current,
+          [week]: { ...current[week], [animationNext]: true },
+        }));
+        setInstantReveal(false);
         setCurrentPage(animationNext);
-      }, 9000);
-      return () => clearTimeout(timer);
-    }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setDrawError(
+          error instanceof Error ? error.message : "No se pudo realizar el sorteo."
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentPage, animationNext]);
+
+  useEffect(() => {
+    if (currentPage !== "fifty") return;
+    if (instantReveal) {
+      setVisibleFifty(new Array(fiftyWinners.length).fill(true));
+      return;
+    }
+    setVisibleFifty(new Array(fiftyWinners.length).fill(false));
+    const timers: NodeJS.Timeout[] = [];
+    fiftyWinners.forEach((_, index) => {
+      const timer = setTimeout(() => {
+        setVisibleFifty((prev) => {
+          const next = [...prev];
+          next[index] = true;
+          return next;
+        });
+      }, index * 500);
+      timers.push(timer);
+    });
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [currentPage, fiftyWinners, instantReveal]);
 
   // Efecto para activar el fade-in de los ganadores en third_page y fifth_page
   useEffect(() => {
     if (currentPage === "fifth") {
-      setShowWinnerActions(false);
       setVisibleWinners(new Array(winners.length).fill(true));
       return;
     }
 
     if (currentPage === "third") {
-      setShowWinnerActions(false);
+      if (instantReveal) {
+        setVisibleWinners(new Array(winners.length).fill(true));
+        return;
+      }
       setVisibleWinners(new Array(winners.length).fill(false));
 
       const timers: NodeJS.Timeout[] = [];
-      let actionTimer: NodeJS.Timeout | undefined;
       winners.forEach((_, index) => {
         const timer = setTimeout(() => {
           setVisibleWinners((prev) => {
@@ -493,23 +465,17 @@ const IndexPage: React.FC = () => {
             newState[index] = true;
             return newState;
           });
-          if (index === winners.length - 1) {
-            actionTimer = setTimeout(() => setShowWinnerActions(true), 500);
-          }
         }, index * 500);
         timers.push(timer);
       });
 
       return () => {
         timers.forEach((timer) => clearTimeout(timer));
-        if (actionTimer) clearTimeout(actionTimer);
-        setShowWinnerActions(false);
       };
     }
 
-    setShowWinnerActions(false);
     setVisibleWinners(new Array(winners.length).fill(false));
-  }, [currentPage, winners]);
+  }, [currentPage, winners, instantReveal]);
 
   // Efecto para activar el fade-in de los suplentes en fourth_page
   useEffect(() => {
@@ -538,6 +504,15 @@ const IndexPage: React.FC = () => {
       setVisibleAlternates(new Array(alternates.length).fill(false));
     }
   }, [currentPage, alternates.length]);
+
+  useEffect(() => {
+    if (currentPage !== "week" || userCounts.length > 0) return;
+    loadParticipants()
+      .then(setUserCounts)
+      .catch((error) => {
+        console.error("Error al leer participantes:", error);
+      });
+  }, [currentPage, userCounts.length]);
 
   // Efecto para mostrar el confetti 4 segundos después de que aparezca second_page
   useEffect(() => {
@@ -591,250 +566,163 @@ const IndexPage: React.FC = () => {
 
       <div
         id="first_page"
-        className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
+        className={`absolute inset-0 z-20 h-screen w-screen ${
           currentPage === "first" ? "" : "hidden"
         }`}
       >
-        <div className="absolute left-0 top-0 z-10 ml-20 mt-20">
-          {/* <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="211"
-            height="86"
-            viewBox="0 0 211 86"
-            fill="none"
-          >
-            <g filter="url(#filter0_dddddd_1_315)">
-              <path
-                d="M66.5952 48.0326C66.5046 48.3891 66.3236 48.3891 66.2331 47.9434C65.871 46.0715 64.6941 44.0213 61.8878 43.0408C61.7974 43.0408 61.7069 43.1299 61.7069 43.219C61.9783 43.6647 62.3405 44.467 62.3405 45.5367C62.25 48.0326 60.9826 49.548 60.3489 50.172C60.1679 50.3502 59.9869 50.2611 60.0774 49.9937C60.1679 46.9628 57.4521 45.6258 56.9995 43.9321C56.909 43.7538 56.8185 43.7538 56.728 44.0213C55.189 54.9854 46.6796 68.8913 29.1179 61.8493C28.9369 61.7602 28.8463 61.671 29.2084 61.671C48.3091 62.5625 47.2229 44.5562 36.36 36.8009C36.2693 36.7118 36.0883 36.7118 36.0883 36.89C35.9978 39.5643 33.282 40.5448 35.9978 46.0715C36.0883 46.1606 35.9978 46.2498 35.9072 46.2498C30.1136 45.1801 28.4843 40.9906 29.0274 37.6923C29.0274 37.6032 28.9369 37.5141 28.8463 37.6032C25.3159 40.4557 24.7728 44.1104 27.1263 47.8543C27.2168 47.9434 27.0358 48.1217 26.9454 48.0326C19.8844 43.1299 22.057 34.9289 25.5875 32.968C28.6653 31.1851 30.6569 32.5222 30.9283 32.7005C31.1095 32.7896 31.2905 32.6114 31.1095 32.4331C30.7474 31.3633 29.8421 29.4915 30.5664 27.6195C33.1011 20.5774 44.2356 21.0231 47.8565 25.6584C47.9471 25.7475 47.8565 25.9259 47.6755 25.8366C41.2482 24.0539 36.0883 28.7783 35.2736 29.4915C34.9115 29.7588 35.002 29.9372 35.4546 29.7588C42.8776 27.9761 44.0545 33.2353 47.9471 33.2353C48.2186 33.2353 48.3091 33.4135 48.0376 33.5919C43.5114 37.0684 38.804 35.9094 37.5367 35.2855C37.1745 35.1073 37.0841 35.3746 37.4462 35.6421C52.4732 46.3389 45.4123 60.0666 41.4293 60.9578C50.0292 58.8185 53.7407 49.8154 55.2795 44.0213C55.37 43.7538 55.2795 43.7538 55.0985 43.9321C54.4648 44.5562 53.6501 45.6258 53.4691 45.804C51.387 47.7651 49.2145 47.676 48.2186 47.4978C47.9471 47.4085 47.8565 47.3194 48.1281 47.1412C50.8439 45.6258 50.2102 41.2579 53.288 40.634C53.4691 40.634 53.4691 40.4557 53.3786 40.3665C52.8353 39.7425 49.6671 38.762 46.8608 41.0797C46.6796 41.2579 46.4987 41.1688 46.5892 40.9013C46.6796 40.01 47.0418 37.9598 49.6671 36.7118C52.2922 35.4639 54.7364 36.0878 56.2754 37.7814C57.2711 38.9402 57.2711 39.9208 57.2711 40.1882C57.3616 40.4557 57.5427 40.4557 57.7237 40.3665C58.1763 40.0991 58.9006 39.5643 59.9869 39.2968C63.9699 38.4946 67.9531 43.9321 66.5952 48.0326Z"
-                fill="url(#paint0_linear_1_315)"
+        <RouteHome onOpenWeek={handleOpenWeek} />
+      </div>
+      <div
+        id="week_page"
+        className={`absolute inset-0 z-20 h-screen w-screen ${
+          currentPage === "week" ? "" : "hidden"
+        }`}
+      >
+        <WeekHub
+          week={activeWeek}
+          drawn={drawnByWeek[activeWeek]}
+          onBack={() => setCurrentPage("first")}
+          onDraw={handleDrawPrize}
+          onViewWinners={handleViewWinners}
+          onParticipants={() => setIsTableModalOpen(true)}
+        />
+      </div>
+      <div
+        id="second_page"
+        className={`absolute inset-0 z-20 h-screen w-screen ${
+          currentPage === "second" ? "" : "hidden"
+        }`}
+      >
+        <div className="relative h-full w-full overflow-hidden bg-[#192a44]">
+          <img
+            src={fondoRuta}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover blur-[2px]"
+          />
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="relative h-[832px] w-[1280px] shrink-0">
+              <img
+                src={logoPalms}
+                alt="Palms Bet"
+                className="absolute left-[40px] top-[40px] h-[65px] w-[299px] max-w-none object-cover"
               />
-            </g>
-            <path
-              d="M80.628 56.4369H73.7345C73.4823 56.4369 72.978 56.4369 72.978 55.989C72.978 55.8098 73.062 55.5412 73.3982 55.5412C73.4823 55.5412 73.5664 55.5412 73.7345 55.5412C74.0708 55.5412 74.3231 55.4516 74.5752 55.4516C75.0795 55.3619 75.584 55.2724 75.584 53.4807V39.8647C75.584 34.4003 75.584 33.415 75.4999 32.34C75.4158 31.0859 75.1637 30.7275 74.239 30.5484C73.9868 30.4588 73.5664 30.4588 73.2302 30.4588C72.8939 30.4588 72.8098 30.1902 72.8098 30.0109C72.8098 29.5631 73.2302 29.5631 73.4823 29.5631H81.3005C85.5037 29.5631 87.0169 31.0859 87.5213 31.6234C88.362 32.5191 89.2027 34.1316 89.2027 35.9232C89.2027 40.9397 85.756 44.4332 80.8801 44.4332C80.796 44.4332 80.4598 44.4332 80.2076 44.4332C80.0395 44.4332 79.7033 44.3437 79.7033 43.9853C79.7033 43.4479 80.1235 43.4479 80.796 43.4479C83.9065 43.4479 86.2603 41.0293 86.2603 37.894C86.2603 37.0878 86.2603 34.5796 84.4949 32.6087C83.0659 31.0859 81.5526 30.9068 80.4598 30.9068C80.3758 30.9068 80.2917 30.9068 80.2917 30.9068H80.1235C79.5351 30.9068 79.0307 30.9963 78.7784 31.0859C78.6104 31.1754 78.6104 31.3546 78.6104 31.5338V53.3016C78.6104 55.0932 78.8625 55.0932 79.7033 55.2723C80.0395 55.3619 80.2076 55.3619 80.4598 55.3619L80.7121 55.4516C81.0483 55.5412 81.1323 55.7203 81.1323 55.8994C81.2164 56.3474 80.8801 56.4369 80.628 56.4369Z"
-              fill="white"
-            />
-            <path
-              d="M104.905 54.0105H100.07C99.8974 54.0105 99.552 54.0105 99.552 53.6561C99.552 53.479 99.552 53.3904 99.6384 53.3904C99.7247 53.2131 99.9837 53.2131 100.243 53.2131C100.329 53.2131 100.415 53.2131 100.502 53.2131C100.502 53.2131 100.588 53.1246 100.502 52.9474L98.3433 47.5427H92.8179C92.8179 47.5427 92.8179 47.5427 92.7315 47.6313C92.7315 47.6313 91.6092 50.821 91.3502 51.4412C91.0912 52.0613 91.0049 52.593 91.0049 52.9474C91.0049 53.3018 91.4366 53.3904 91.6092 53.3904H91.8682C92.1272 53.3904 92.2999 53.5676 92.2999 53.7448C92.2999 53.8333 92.2136 54.0992 91.7819 54.0992H87.4652C87.2925 54.0992 86.8608 54.0992 86.8608 53.7448C86.8608 53.5676 87.0335 53.3904 87.2062 53.3904C87.2925 53.3904 87.3788 53.3904 87.4652 53.3904C87.5515 53.3904 87.5515 53.3904 87.6378 53.3904C88.5875 53.3018 89.0191 52.593 89.5371 51.3525L95.149 36.4676C95.408 35.7587 95.5806 35.4043 95.926 35.4043C96.2713 35.4043 96.3576 35.6701 96.5303 36.1132C96.5303 36.2017 96.6166 36.2904 96.6166 36.3789C96.7893 36.9105 97.8253 39.3914 99.0341 42.4038C100.243 45.5048 101.624 48.9602 102.401 50.821C103.264 52.9474 103.869 53.2131 104.3 53.3018C104.646 53.3904 104.905 53.3904 105.077 53.3904C105.336 53.3904 105.595 53.5676 105.595 53.8333C105.595 53.8333 105.423 54.0105 104.905 54.0105ZM93.2495 45.9479H97.8253L95.4943 39.5686C95.4943 39.5686 95.4943 39.5686 95.4943 39.4799C95.4943 39.4799 95.4943 39.4799 95.4943 39.5686C95.408 39.8343 93.5949 45.1504 93.2495 45.9479Z"
-              fill="white"
-            />
-            <path
-              d="M116.37 54.0992H107.441C106.935 54.0992 106.935 53.8295 106.935 53.6498C106.935 53.4701 107.104 53.2902 107.356 53.2902C107.609 53.2902 107.777 53.2003 108.03 53.2003C108.367 53.1105 108.367 52.8409 108.451 52.1218V52.0319C108.62 51.0432 108.62 49.1558 108.62 46.819V42.5946C108.62 38.8197 108.62 38.1905 108.536 37.4715C108.451 36.6625 108.367 36.393 107.777 36.3031C107.019 36.2133 106.851 36.2133 106.767 35.8537C106.767 35.7638 106.767 35.674 106.851 35.5841C106.935 35.4941 107.188 35.4043 107.356 35.4043H112.242C112.495 35.4043 112.663 35.4941 112.748 35.5841C112.832 35.674 112.832 35.7638 112.832 35.8537C112.832 36.2133 112.579 36.2133 111.821 36.3031C111.316 36.393 111.147 36.5727 111.147 37.4715C111.147 38.1905 111.147 38.9097 111.147 42.5946V46.9088C111.147 49.8748 111.147 51.7624 111.568 52.2118C111.905 52.5712 112.832 52.7509 114.517 52.7509C115.78 52.7509 116.707 52.6611 117.212 52.1218C117.465 51.8522 117.633 51.3129 117.718 50.8635C117.802 50.5939 117.97 50.4141 118.139 50.4141C118.307 50.4141 118.476 50.5039 118.476 50.9534C118.476 51.2231 118.307 52.6611 118.139 53.3802C117.802 54.0093 117.633 54.0992 116.37 54.0992Z"
-              fill="white"
-            />
-            <path
-              d="M124.773 54.0992H120.255C119.82 54.0992 119.646 53.9227 119.646 53.6582C119.646 53.4819 119.733 53.3055 120.081 53.3055C120.255 53.3055 120.429 53.3055 120.776 53.2174C121.384 53.1292 121.471 52.6001 121.558 51.7182V51.4537L123.383 36.0215C123.383 35.6688 123.643 35.4043 123.904 35.4043C124.078 35.4043 124.425 35.4925 124.599 35.8452L132.158 50.2191L139.37 35.9335C139.457 35.757 139.631 35.4043 139.978 35.4043C140.152 35.4043 140.5 35.4925 140.586 36.198L142.498 52.4237C142.585 52.9527 142.585 53.0409 143.193 53.1292C143.367 53.1292 143.454 53.1292 143.541 53.2174C143.801 53.2174 144.062 53.3055 144.149 53.3937C144.149 53.4819 144.236 53.4819 144.236 53.6582C144.236 54.011 143.801 54.011 143.541 54.011H138.849C138.501 54.011 138.414 53.8347 138.414 53.6582C138.414 53.4819 138.501 53.2174 138.762 53.2174C139.631 53.1292 139.804 53.0409 139.718 52.5119L138.675 41.1362L132.767 52.6882C132.245 53.7464 132.071 54.011 131.724 54.011C131.376 54.011 131.203 53.6582 130.681 52.8646C130.073 51.8064 128.335 48.72 127.727 47.3973C127.466 46.9563 127.119 46.1627 126.684 45.369C125.902 43.8699 125.12 42.2826 124.686 41.4007L123.73 51.5419C123.73 51.8946 123.73 52.3355 123.73 52.6882C123.73 52.9527 123.904 53.1292 124.165 53.1292C124.512 53.2174 124.773 53.2174 124.947 53.2174C125.034 53.2174 125.034 53.2174 125.12 53.2174C125.381 53.2174 125.468 53.3937 125.468 53.5701C125.468 54.0992 125.034 54.0992 124.773 54.0992Z"
-              fill="white"
-            />
-            <path
-              d="M149.514 55.2676C148.799 55.2676 147.103 55.1748 145.853 54.6179C145.406 54.4322 145.406 54.1538 145.406 53.504C145.406 52.1117 145.496 51.0907 145.496 50.9052C145.496 50.7195 145.585 50.2554 145.942 50.2554C146.121 50.2554 146.389 50.3483 146.389 50.7195C146.389 50.9052 146.389 51.2763 146.478 51.5548C146.925 53.6897 149.425 53.8753 150.229 53.8753C152.372 53.8753 153.712 52.6686 153.712 50.8124C153.712 49.1416 152.908 48.399 150.675 46.6354L149.514 45.8C146.925 43.758 145.853 42.18 145.853 40.3238C145.853 37.3535 148.086 35.4043 151.569 35.4043C152.641 35.4043 153.623 35.5899 154.158 35.6827C154.605 35.7756 154.783 35.7756 154.962 35.7756C155.052 35.7756 155.409 35.7756 155.409 36.1468C155.409 36.1468 155.409 36.2397 155.409 36.4253C155.409 36.7966 155.32 37.5392 155.32 38.8386C155.32 39.2099 155.32 39.5812 154.962 39.5812C154.605 39.5812 154.605 39.3027 154.516 39.1171C154.427 38.5602 154.337 38.1889 154.158 37.9104C154.158 37.9104 153.534 36.7966 151.122 36.7966C149.693 36.7966 147.996 37.4463 147.996 39.3027C147.996 40.7879 148.621 41.6233 151.122 43.2939L151.837 43.758C154.783 45.8 155.945 47.6565 155.945 49.8842C155.945 51.7404 155.141 53.2255 153.534 54.3394C152.641 54.9891 151.3 55.2676 149.514 55.2676Z"
-              fill="white"
-            />
-            <path
-              d="M171.794 56.4369H163.989C163.564 56.4369 163.394 56.17 163.394 55.9919C163.394 55.814 163.479 55.5471 163.819 55.5471C163.989 55.5471 164.158 55.4581 164.327 55.4581C164.498 55.4581 164.668 55.4581 164.837 55.369C165.347 55.2801 165.516 54.6572 165.685 53.5894C165.855 52.1655 165.855 49.318 165.855 46.0256V39.8855C165.855 34.4572 165.855 33.4785 165.77 32.3216C165.685 31.0758 165.431 30.7198 164.498 30.5419C164.327 30.5419 164.073 30.4529 163.394 30.4529C163.14 30.4529 162.971 30.275 162.971 30.0079C162.971 29.5631 163.479 29.5631 163.65 29.5631H171.116C177.649 29.5631 177.989 34.4572 177.989 34.9912C178.074 38.5507 176.292 40.4194 175.188 41.1313C177.564 41.6652 180.534 44.6908 180.534 48.6062C180.45 52.4326 177.735 56.4369 171.794 56.4369ZM168.825 42.3771V44.4237C168.825 47.0043 168.825 51.4537 168.825 51.9876V52.1655C168.91 53.7674 168.91 54.1232 169.843 54.5682C170.776 55.0132 172.388 55.1021 172.729 55.1021C174.764 55.1021 177.225 53.8563 177.225 50.3859C177.225 49.051 176.886 45.5806 174.085 43.5339C172.983 42.733 172.219 42.644 171.455 42.555C171.116 42.4661 170.182 42.3771 168.825 42.3771ZM168.91 40.9533C169.164 40.9533 169.674 41.0423 170.861 41.0423C172.729 41.0423 173.067 40.9534 173.747 40.2415C174.51 39.3515 174.934 38.1057 174.934 36.8599C174.934 34.1903 173.831 31.0758 170.607 31.0758C170.182 31.0758 169.504 31.0758 169.079 31.2537C168.825 31.3427 168.825 31.3427 168.825 31.4318V40.7753C168.825 40.8644 168.825 40.8644 168.91 40.9533Z"
-              fill="white"
-            />
-            <path
-              d="M192.457 54.0992H192.279H183.586C183.142 54.0992 182.965 53.9186 182.965 53.6475C182.965 53.4669 183.142 53.2863 183.32 53.2863C183.497 53.2863 183.586 53.196 183.763 53.196C183.852 53.196 183.941 53.196 184.118 53.1057H184.207C184.562 53.0154 184.739 52.9251 184.739 50.8479V40.0103C184.739 36.3977 184.561 36.3977 183.852 36.3074C183.675 36.3074 183.408 36.3074 183.231 36.2171C182.965 36.2171 182.876 36.0365 182.876 35.8559C182.876 35.5849 183.054 35.4946 183.32 35.4946C184.118 35.4946 191.126 35.5849 191.924 35.5849C192.368 35.5849 192.723 35.4946 192.9 35.4946H192.989C193.077 35.4043 193.255 35.4043 193.344 35.4043C193.521 35.4043 193.698 35.4946 193.698 35.8559C193.698 36.0365 193.432 38.2943 193.344 38.5652C193.255 38.9266 193.166 39.0169 192.9 39.0169C192.811 39.0169 192.545 39.0169 192.545 38.4749C192.545 38.2943 192.545 37.9331 192.457 37.6621C192.368 37.3912 192.191 37.1203 190.86 37.03C190.505 37.03 187.756 36.9397 187.577 36.9397C187.401 36.9397 187.401 37.03 187.401 37.1203V43.5325C187.401 43.5325 187.401 43.5325 187.401 43.6228C188.109 43.6228 190.86 43.6228 191.392 43.5325H191.481C192.013 43.4422 192.279 43.4422 192.545 43.2616L192.634 43.1713C192.811 42.9907 192.9 42.9004 193.077 42.9004C193.255 42.9004 193.432 42.9907 193.432 43.2616C193.432 43.3519 193.432 43.4422 193.432 43.5325C193.344 43.7132 193.344 44.0744 193.255 44.6162C193.166 45.0679 193.166 46.2419 193.166 46.3322C193.166 46.6936 192.9 46.7839 192.811 46.7839C192.545 46.7839 192.457 46.6031 192.457 46.3322C192.457 46.1516 192.457 45.8807 192.368 45.6097C192.279 45.4291 192.279 45.1582 191.304 44.9776C190.683 44.8873 188.199 44.8873 187.667 44.8873V46.8742C187.667 47.1451 187.667 47.5063 187.667 47.9579C187.667 49.132 187.667 50.6672 187.667 50.9382C187.756 52.3832 187.933 52.6541 190.417 52.6541C191.037 52.6541 192.191 52.6541 192.811 52.3832C193.344 52.1123 193.61 51.7511 193.787 50.8479C193.787 50.6672 193.876 50.306 194.231 50.3963C194.319 50.3963 194.585 50.4866 194.585 50.9382C194.585 51.2091 194.408 52.7445 194.231 53.2863C193.61 54.0992 193.255 54.0992 192.457 54.0992Z"
-              fill="white"
-            />
-            <path
-              d="M204.789 54.0992H199.688C199.52 54.0992 199.102 54.0992 199.102 53.7396C199.102 53.5599 199.185 53.3802 199.436 53.3802C199.771 53.3802 200.188 53.2902 200.356 53.2003C200.691 53.1105 200.942 53.0206 200.942 51.2231V37.2018H197.847C196.592 37.2018 196.007 37.3817 195.673 37.921C195.505 38.2804 195.422 38.3704 195.338 38.5501V38.6399C195.254 38.8197 195.17 38.9995 194.919 38.9995C194.753 38.9995 194.585 38.8197 194.585 38.6399C194.585 38.4602 194.753 37.7411 195.087 36.2133L195.17 35.9436C195.254 35.7638 195.254 35.4043 195.589 35.4043C195.673 35.4043 195.756 35.4043 195.839 35.4941C196.007 35.5841 196.258 35.674 196.592 35.674C197.261 35.7638 198.098 35.7638 198.349 35.7638H206.128C206.379 35.7638 207.214 35.7638 207.884 35.674C208.218 35.5841 208.469 35.4941 208.636 35.4941C208.72 35.4941 208.804 35.4043 208.887 35.4043C209.221 35.4043 209.306 35.8537 209.306 36.0334C209.306 36.0334 209.306 36.2133 209.389 36.393C209.64 37.6512 209.807 38.4602 209.807 38.6399C209.807 38.9097 209.64 38.9995 209.472 38.9995C209.306 38.9995 209.138 38.9097 209.055 38.6399C208.97 38.4602 208.97 38.3704 208.72 38.0108C208.385 37.5614 207.799 37.2918 206.545 37.2918H203.367V51.3129C203.367 53.2003 203.45 53.2003 204.203 53.2902H204.286C204.789 53.3802 205.123 53.3802 205.123 53.7396C205.123 53.8295 205.123 53.9195 205.04 54.0093C205.123 54.0093 204.957 54.0992 204.789 54.0992Z"
-              fill="white"
-            />
-            <defs>
-              <filter
-                id="filter0_dddddd_1_315"
-                x="7.37042"
-                y="7.323"
-                width="74.4142"
-                height="71.354"
-                filterUnits="userSpaceOnUse"
-                color-interpolation-filters="sRGB"
-              >
-                <feFlood flood-opacity="0" result="BackgroundImageFix" />
-                <feColorMatrix
-                  in="SourceAlpha"
-                  type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                  result="hardAlpha"
+              <div className="absolute left-[90px] top-[122px] flex w-[1100px] flex-col items-center gap-[4px] text-center">
+                <p
+                  className="m-0 font-urbanist text-[18px] font-bold leading-normal tracking-[2.88px]"
+                  style={{
+                    background: "linear-gradient(183deg, #ffed87 10%, #ffbe41 92%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  {animationNext === "final"
+                    ? `SEMANA ${activeWeek} · SORTEO 3 DE 3`
+                    : animationNext === "third"
+                      ? `SEMANA ${activeWeek} · SORTEO 2 DE 3`
+                      : `SEMANA ${activeWeek} · SORTEO 1 DE 3`}
+                </p>
+                <p
+                  className={`m-0 max-w-[1000px] font-urbanist font-black leading-normal ${
+                    animationNext === "final" &&
+                    getWeek(activeWeek).finalCountdownTitle.length > 12
+                      ? "text-[48px]"
+                      : "text-[64px]"
+                  }`}
+                  style={{
+                    background: "linear-gradient(187deg, #ffed87 10%, #ffbe41 92%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                    filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
+                  }}
+                >
+                  {animationNext === "final"
+                    ? getWeek(activeWeek).finalCountdownTitle
+                    : animationNext === "third"
+                      ? "SORTEO S/ 100"
+                      : "SORTEO S/ 50"}
+                </p>
+                <p className="m-0 font-urbanist text-[24px] font-medium leading-normal text-white [text-shadow:0px_2px_8px_rgba(0,0,0,0.45)]">
+                  {animationNext === "final"
+                    ? getWeek(activeWeek).finalCountdownDetail
+                    : animationNext === "third"
+                      ? "10 ganadores · S/ 100 cada uno"
+                      : "20 ganadores · S/ 50 cada uno"}
+                </p>
+              </div>
+              <div className="absolute left-[331px] top-[319px] h-[296px] w-[618px] overflow-hidden">
+                <img
+                  key={spinKey}
+                  src={ruletaWheel}
+                  alt=""
+                  className="pointer-events-none absolute left-1/2 top-1/2 w-[760px] max-w-none -translate-x-1/2 -translate-y-1/2"
                 />
-                <feOffset />
-                <feGaussianBlur stdDeviation="0.1776" />
-                <feColorMatrix
-                  type="matrix"
-                  values="0 0 0 0 0.6 0 0 0 0 0.4 0 0 0 0 0.2 0 0 0 1 0"
-                />
-                <feBlend
-                  mode="normal"
-                  in2="BackgroundImageFix"
-                  result="effect1_dropShadow_1_315"
-                />
-                <feColorMatrix
-                  in="SourceAlpha"
-                  type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                  result="hardAlpha"
-                />
-                <feOffset />
-                <feGaussianBlur stdDeviation="0.3552" />
-                <feColorMatrix
-                  type="matrix"
-                  values="0 0 0 0 0.6 0 0 0 0 0.4 0 0 0 0 0.2 0 0 0 1 0"
-                />
-                <feBlend
-                  mode="normal"
-                  in2="effect1_dropShadow_1_315"
-                  result="effect2_dropShadow_1_315"
-                />
-                <feColorMatrix
-                  in="SourceAlpha"
-                  type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                  result="hardAlpha"
-                />
-                <feOffset />
-                <feGaussianBlur stdDeviation="1.2432" />
-                <feColorMatrix
-                  type="matrix"
-                  values="0 0 0 0 0.6 0 0 0 0 0.4 0 0 0 0 0.2 0 0 0 1 0"
-                />
-                <feBlend
-                  mode="normal"
-                  in2="effect2_dropShadow_1_315"
-                  result="effect3_dropShadow_1_315"
-                />
-                <feColorMatrix
-                  in="SourceAlpha"
-                  type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                  result="hardAlpha"
-                />
-                <feOffset />
-                <feGaussianBlur stdDeviation="2.4864" />
-                <feColorMatrix
-                  type="matrix"
-                  values="0 0 0 0 0.6 0 0 0 0 0.4 0 0 0 0 0.2 0 0 0 1 0"
-                />
-                <feBlend
-                  mode="normal"
-                  in2="effect3_dropShadow_1_315"
-                  result="effect4_dropShadow_1_315"
-                />
-                <feColorMatrix
-                  in="SourceAlpha"
-                  type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                  result="hardAlpha"
-                />
-                <feOffset />
-                <feGaussianBlur stdDeviation="4.2624" />
-                <feColorMatrix
-                  type="matrix"
-                  values="0 0 0 0 0.6 0 0 0 0 0.4 0 0 0 0 0.2 0 0 0 1 0"
-                />
-                <feBlend
-                  mode="normal"
-                  in2="effect4_dropShadow_1_315"
-                  result="effect5_dropShadow_1_315"
-                />
-                <feColorMatrix
-                  in="SourceAlpha"
-                  type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                  result="hardAlpha"
-                />
-                <feOffset />
-                <feGaussianBlur stdDeviation="7.4592" />
-                <feColorMatrix
-                  type="matrix"
-                  values="0 0 0 0 0.6 0 0 0 0 0.4 0 0 0 0 0.2 0 0 0 1 0"
-                />
-                <feBlend
-                  mode="normal"
-                  in2="effect5_dropShadow_1_315"
-                  result="effect6_dropShadow_1_315"
-                />
-                <feBlend
-                  mode="normal"
-                  in="SourceGraphic"
-                  in2="effect6_dropShadow_1_315"
-                  result="shape"
-                />
-              </filter>
-              <linearGradient
-                id="paint0_linear_1_315"
-                x1="33.6043"
-                y1="61.0173"
-                x2="58.6119"
-                y2="38.7959"
-                gradientUnits="userSpaceOnUse"
-              >
-                <stop offset="0.183312" stop-color="#FFD261" />
-                <stop offset="0.5" stop-color="#FFF28F" />
-                <stop offset="1" stop-color="#FFBE41" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <p className="font-urbanist font-bold text-[32px] text-white m-0 mt-8 ml-6 leading-normal">
-            TE LLEVAMOS A
-          </p>
-          <p
-            className="font-urbanist font-black text-[64px] w-full m-0 ml-6 leading-normal"
-            style={{
-              background: "linear-gradient(180deg, #ffd869 0%, #f6c44d 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-              textShadow: "0 0 10px rgba(255, 216, 105, 0.6)",
-              filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
-            }}
-          >
-            LAS VEGAS
-          </p> */}
-          <img src={vegasBanner} />
-        </div>
-
-        {/* SVG en el centro - Ejemplo con máquina tragamonedas */}
-        <div className="absolute h-screen w-screen flex items-center justify-center">
-          <div>
-            <img
-              src={ruleta}
-              alt="Slot machine"
-              className="w-full h-full object-contain mb-10"
-            />
-
-            <div className="border-2 border-[#006afa] border-solid box-border flex flex-col gap-[10px] items-start p-[2px] rounded-[8px] w-full">
-              <button
-                onClick={handleStartClick}
-                className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.1)] border-solid box-border flex gap-[8px] h-[70px] items-center justify-center px-[16px] py-[8px] rounded-[6px] w-full cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0"
-              >
-                <span className="font-urbanist font-extrabold text-[28px] text-center text-[#f5f5f5] whitespace-nowrap leading-[normal]">
-                  EMPEZAR
-                </span>
-              </button>
+              </div>
+              {drawError && (
+                <div className="absolute bottom-16 left-1/2 z-30 flex w-[640px] -translate-x-1/2 flex-col items-center gap-4 rounded-[16px] bg-[rgba(8,15,26,0.92)] px-8 py-6 text-center">
+                  <p className="m-0 font-urbanist text-[22px] font-bold text-white">{drawError}</p>
+                  <button
+                    onClick={handleDrawBack}
+                    className="h-[52px] w-[220px] cursor-pointer rounded-[8px] bg-[#006afa] font-urbanist text-[20px] font-bold text-white"
+                  >
+                    Volver
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
       <div
-        id="second_page"
+        id="fifty_page"
         className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
-          currentPage === "second" ? "" : "hidden"
+          currentPage === "fifty" ? "" : "hidden"
         }`}
       >
-        <img
-          key={spinKey}
-          src={ruletaWheel}
-          alt="Slot machine"
-          className="w-[362px] h-auto"
-        />
-        <img 
-          src={confetti} 
-          alt="Confetti" 
-          className={`w-screen h-auto absolute bottom-0 left-0 transition-opacity duration-500 ${
-            showConfetti ? "opacity-100" : "opacity-0"
-          }`} 
-        />
+        <div className="flex flex-col gap-[12px] items-center">
+          <div className="flex flex-col gap-[4px] items-center">
+            <p
+              className="font-urbanist font-bold text-[18px] tracking-[2.88px] m-0 leading-normal"
+              style={{
+                background: "linear-gradient(183deg, #ffed87 10%, #ffbe41 92%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              SEMANA {activeWeek} · SORTEO 1 DE 3
+            </p>
+            <h2
+              className="font-urbanist font-black text-[64px] text-center m-0 leading-normal"
+              style={{
+                background: "linear-gradient(185deg, #ffed87 10%, #ffbe41 92%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
+              }}
+            >
+              GANADORES S/ 50
+            </h2>
+          </div>
+          <WinnersGrid
+            winners={fiftyWinners}
+            visible={visibleFifty}
+            rows={4}
+            columns={5}
+            prizeLabel="S/ 50"
+            compact
+            gap={10}
+          />
+          <button
+            type="button"
+            onClick={() => setCurrentPage("week")}
+            className="flex h-[40px] w-[217px] cursor-pointer items-center justify-center rounded-[32px] bg-[#006afa] px-[12px] font-urbanist text-[16px] font-bold leading-[24px] text-[#f5f5f5] transition-colors hover:bg-[#0056d6]"
+          >
+            Volver al inicio
+          </button>
+        </div>
       </div>
       <div
         id="third_page"
@@ -845,6 +733,17 @@ const IndexPage: React.FC = () => {
         <div>
           <img src={logoSvg} alt="Logo" className="w-[320px] h-auto mx-auto mb-2" />
           <div className="flex flex-col gap-[4px] items-center">
+            <p
+              className="font-urbanist font-bold text-[18px] tracking-[2.88px] m-0 leading-normal"
+              style={{
+                background: "linear-gradient(183deg, #ffed87 10%, #ffbe41 92%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              SEMANA {activeWeek} · SORTEO 2 DE 3
+            </p>
             <h2
               className="font-urbanist font-black text-[64px] text-center w-full m-0 leading-normal"
               style={{
@@ -859,35 +758,19 @@ const IndexPage: React.FC = () => {
               GANADORES
             </h2>
             <p className="font-urbanist font-medium text-[28px] text-center w-full m-0 leading-normal text-white">
-              10 ganadores de S/ 100
+              {bonusPrizeName || "10 ganadores de S/ 100"}
             </p>
           </div>
           <div className="flex flex-col items-center mt-8">
             <WinnersGrid winners={winners} visible={visibleWinners} />
 
-            {showWinnerActions && (
-              <>
-                <button
-                  onClick={handleSorteoPremioFinalClick}
-                  className="bg-[#006afa] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-8 cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,106,250,0.4)] active:translate-y-0 w-[420px]"
-                >
-                  <div className="flex flex-col h-[70px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[24px] text-center text-[#f5f5f5] whitespace-nowrap">
-                    <p className="leading-[normal] whitespace-pre">Sorteo premio final</p>
-                  </div>
-                </button>
-
-                {userCounts.length > 0 && (
-                  <button
-                    onClick={() => setIsTableModalOpen(true)}
-                    className="bg-[#354865] border-2 border-[rgba(255,255,255,0.11)] border-solid box-border flex items-center justify-center px-[16px] py-0 rounded-[8px] mt-12 cursor-pointer transition-all duration-300 hover:bg-[#2a3a52] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(53,72,101,0.4)] active:translate-y-0 w-[340px]"
-                  >
-                    <div className="flex flex-col h-[52px] font-urbanist font-bold justify-center leading-[0] relative shrink-0 text-[16px] text-center text-[#f5f5f5] whitespace-nowrap">
-                      <p className="leading-[normal] whitespace-pre">Ver participantes</p>
-                    </div>
-                  </button>
-                )}
-              </>
-            )}
+            <button
+              type="button"
+              onClick={() => setCurrentPage("week")}
+              className="mt-8 flex h-[40px] w-[217px] cursor-pointer items-center justify-center rounded-[32px] bg-[#006afa] px-[12px] font-urbanist text-[16px] font-bold leading-[24px] text-[#f5f5f5] transition-colors hover:bg-[#0056d6]"
+            >
+              Volver al inicio
+            </button>
 
             
           </div>
@@ -1224,104 +1107,150 @@ const IndexPage: React.FC = () => {
               </p>
               <div className="bg-[rgba(255,206,88,0.15)] border border-[#ffce58] border-solid rounded-full px-[12px] py-[4px]">
                 <p className="font-urbanist font-bold text-[18px] text-[#ffce58] m-0 leading-normal whitespace-nowrap">
-                  PlayStation 5 + GTA 5
+                  {finalPrizeName || FINAL_PRIZE_LABEL}
                 </p>
               </div>
             </div>
           </div>
           <p className="font-urbanist font-bold text-[24px] text-center text-white m-0 leading-normal">
-            Ganadores de S/ 100
+            {bonusPrizeName ? `Ganadores de ${bonusPrizeName}` : "Ganadores de S/ 100"}
           </p>
           <WinnersGrid winners={winners} visible={visibleWinners} />
-          {userCounts.length > 0 && (
-            <button
-              onClick={() => setIsTableModalOpen(true)}
-              className="font-urbanist font-bold text-[16px] text-[#f5f5f5] underline cursor-pointer bg-transparent border-0"
-            >
-              Ver participantes
-            </button>
-          )}
         </div>
       </div>
       <div
         id="final_page"
-        className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
+        className={`absolute inset-0 z-20 h-screen w-screen ${
           currentPage === "final" ? "" : "hidden"
         }`}
       >
-        <img
-          src={confetti}
-          alt=""
-          className={`w-screen h-auto absolute bottom-0 left-0 pointer-events-none transition-opacity duration-500 ${
-            finalWinnerVisible ? "opacity-100" : "opacity-0"
-          }`}
-        />
-        <div className="relative z-10 flex flex-col gap-[32px] items-center">
-          <img src={logoSvg} alt="Logo" className="w-[320px] h-auto" />
-          <div className="flex flex-col gap-[4px] items-center">
-            <h2
-              className="font-urbanist font-black text-[64px] text-center m-0 leading-normal"
-              style={{
-                background: "linear-gradient(187deg, #ffed87 10%, #ffbe41 92%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-                filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
-              }}
-            >
-              PREMIO FINAL
-            </h2>
-            <p className="font-urbanist font-medium text-[28px] text-center m-0 leading-normal text-white">
-              PlayStation 5 + GTA 5
-            </p>
-          </div>
-          <div className="flex gap-[32px] items-center">
-            <div className="bg-[rgba(0,0,0,0.35)] border-2 border-dashed border-[#ffce58] rounded-[16px] w-[420px] h-[300px] shrink-0 flex flex-col gap-[8px] items-center justify-center text-center px-[24px]">
-              <p className="font-urbanist font-bold text-[22px] text-white m-0">
-                Imagen premio final
-              </p>
-              <p className="font-urbanist font-normal text-[16px] text-[#a9b3bf] m-0">
-                GTA 5 + PlayStation 5
-              </p>
-            </div>
-            <div
-              className={`bg-[rgba(0,0,0,0.5)] border-4 border-[#ffce58] border-solid rounded-[20px] shadow-[0px_0px_40px_0px_rgba(255,208,92,0.3)] w-[480px] h-[300px] shrink-0 flex flex-col gap-[12px] items-start justify-center px-[32px] overflow-hidden transition-opacity duration-500 ${
-                finalWinnerVisible ? "opacity-100" : "opacity-0"
-              }`}
-            >
-              <p className="font-urbanist font-semibold text-[20px] text-[#ffce58] m-0 leading-normal">
-                GANADOR
-              </p>
-              <p className="font-urbanist font-bold text-[48px] text-white m-0 leading-normal truncate max-w-full">
-                {finalWinner?.username ?? "—"}
-              </p>
-              <p className="font-urbanist font-normal text-[24px] text-[#a9b3bf] m-0 leading-normal">
-                {finalWinner?.code ?? "--------"}
-              </p>
-              <div className="bg-[rgba(255,206,88,0.15)] border border-[#ffce58] border-solid rounded-full px-[12px] py-[4px]">
-                <p className="font-urbanist font-bold text-[20px] text-[#ffce58] m-0 leading-normal whitespace-nowrap">
-                  PlayStation 5 + GTA 5
-                </p>
+        <div className="relative h-full w-full overflow-hidden bg-[#192a44]">
+          <img
+            src={fondoRuta}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover blur-[2px]"
+          />
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="relative h-[832px] w-[1280px] shrink-0">
+              <img
+                src={confetti}
+                alt=""
+                className="pointer-events-none absolute left-0 top-0 h-[720px] w-[1280px] max-w-none object-cover"
+              />
+              <img
+                src={logoPalms}
+                alt="Palms Bet"
+                className="absolute left-[40px] top-[40px] h-[65px] w-[299px] max-w-none object-cover"
+              />
+              <div
+                className={`absolute left-[90px] flex w-[1100px] -translate-y-1/2 flex-col items-center ${
+                  activeWeek === 4
+                    ? "top-[calc(50%-20px)] gap-[56px]"
+                    : "top-1/2 gap-[72px]"
+                }`}
+              >
+                <div className="flex flex-col items-center gap-[4px]">
+                  <p
+                    className="m-0 font-urbanist text-[18px] font-bold leading-normal tracking-[2.88px]"
+                    style={{
+                      background: "linear-gradient(183deg, #ffed87 10%, #ffbe41 92%)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    }}
+                  >
+                    SEMANA {activeWeek} · SORTEO 3 DE 3
+                  </p>
+                  <h2
+                    className="m-0 font-urbanist text-[64px] font-black leading-normal"
+                    style={{
+                      background: "linear-gradient(187deg, #ffed87 10%, #ffbe41 92%)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                      filter: "drop-shadow(0 0 10px rgba(255, 216, 105, 0.6))",
+                    }}
+                  >
+                    PREMIO FINAL
+                  </h2>
+                  {activeWeek === 4 && (
+                    <p className="m-0 font-urbanist text-[24px] font-medium leading-normal text-white [text-shadow:0px_2px_8px_rgba(0,0,0,0.45)]">
+                      4 ganadores · S/ 5,000 cada uno
+                    </p>
+                  )}
+                </div>
+                <div
+                  className={`flex items-center gap-[32px] transition-opacity duration-500 ${
+                    finalWinnerVisible ? "opacity-100" : "opacity-0"
+                  }`}
+                >
+                  <img
+                    src={getWeek(activeWeek).finalImage}
+                    alt=""
+                    className="h-[300px] w-[300px] max-w-none object-cover"
+                  />
+                  {activeWeek === 4 ? (
+                    <div className="flex flex-col gap-[16px]">
+                      {[0, 1].map((row) => (
+                        <div key={row} className="flex gap-[16px]">
+                          {[0, 1].map((column) => {
+                            const index = row * 2 + column;
+                            const winner = finalWinners[index];
+                            return (
+                              <div
+                                key={index}
+                                className="flex h-[142px] w-[296px] shrink-0 flex-col items-start justify-center gap-[4px] overflow-hidden rounded-[20px] border-4 border-solid border-[#ffce58] bg-[rgba(0,0,0,0.5)] px-[24px] py-[16px] shadow-[0px_0px_40px_0px_rgba(255,208,92,0.3)]"
+                              >
+                                <p className="m-0 shrink-0 font-urbanist text-[14px] font-semibold leading-[normal] text-[#ffce58]">
+                                  GANADOR {index + 1}
+                                </p>
+                                <p className="m-0 max-w-full shrink-0 truncate font-urbanist text-[28px] font-bold leading-[normal] text-white">
+                                  {winner?.username ?? "—"}
+                                </p>
+                                <p className="m-0 shrink-0 font-urbanist text-[16px] font-normal leading-[normal] text-[#a9b3bf]">
+                                  {winner?.code ?? "--------"}
+                                </p>
+                                <div className="shrink-0 rounded-full border border-solid border-[#ffce58] bg-[rgba(255,206,88,0.15)] px-[12px] py-[4px]">
+                                  <p className="m-0 whitespace-nowrap font-urbanist text-[16px] font-bold leading-[normal] text-[#ffce58]">
+                                    S/ 5,000
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-[300px] w-[480px] shrink-0 flex-col items-start justify-center gap-[12px] overflow-hidden rounded-[20px] border-4 border-solid border-[#ffce58] bg-[rgba(0,0,0,0.5)] px-[32px] shadow-[0px_0px_40px_0px_rgba(255,208,92,0.3)]">
+                      <p className="m-0 font-urbanist text-[20px] font-semibold leading-normal text-[#ffce58]">
+                        GANADOR
+                      </p>
+                      <p className="m-0 max-w-full truncate font-urbanist text-[48px] font-bold leading-normal text-white">
+                        {finalWinner?.username ?? "—"}
+                      </p>
+                      <p className="m-0 font-urbanist text-[24px] font-normal leading-normal text-[#a9b3bf]">
+                        {finalWinner?.code ?? "--------"}
+                      </p>
+                      <div className="rounded-full border border-solid border-[#ffce58] bg-[rgba(255,206,88,0.15)] px-[12px] py-[4px]">
+                        <p className="m-0 whitespace-nowrap font-urbanist text-[20px] font-bold leading-normal text-[#ffce58]">
+                          {activeWeek === 1
+                            ? finalPrizeName || FINAL_PRIZE_LABEL
+                            : getWeek(activeWeek).finalPrizeLabel}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage("week")}
+                  className="flex h-[40px] w-[217px] cursor-pointer items-center justify-center rounded-[32px] bg-[#006afa] px-[12px] font-urbanist text-[16px] font-bold leading-[24px] text-[#f5f5f5] transition-colors hover:bg-[#0056d6]"
+                >
+                  Volver al inicio
+                </button>
               </div>
             </div>
-          </div>
-          <div className="flex flex-col gap-[20px] items-center">
-            <button
-              onClick={handleTerminarClick}
-              className="bg-[#006afa] flex items-center justify-center h-[60px] w-[331px] rounded-[16px] cursor-pointer transition-all duration-300 hover:bg-[#0056d6] hover:-translate-y-0.5 shadow-[0px_0px_5px_rgba(0,106,250,0.4)]"
-            >
-              <span className="font-urbanist font-bold text-[20px] text-[#f5f5f5]">
-                FINALIZAR
-              </span>
-            </button>
-            {userCounts.length > 0 && (
-              <button
-                onClick={() => setIsTableModalOpen(true)}
-                className="font-urbanist font-semibold text-[16px] text-white underline cursor-pointer bg-transparent border-0"
-              >
-                Ver participantes
-              </button>
-            )}
           </div>
         </div>
       </div>
