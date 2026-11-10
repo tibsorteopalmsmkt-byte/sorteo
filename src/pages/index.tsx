@@ -676,10 +676,17 @@ const IndexPage: React.FC = () => {
       </div>
       <div
         id="fifty_page"
-        className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
+        className={`absolute inset-0 z-20 h-screen w-screen ${
           currentPage === "fifty" ? "" : "hidden"
         }`}
       >
+        <div className="relative h-full w-full overflow-hidden bg-[#192a44]">
+          <img
+            src={fondoRuta}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover blur-[2px]"
+          />
+          <div className="relative z-10 flex h-full w-full items-center justify-center">
         <div className="flex flex-col gap-[12px] items-center">
           <div className="flex flex-col gap-[4px] items-center">
             <p
@@ -723,13 +730,22 @@ const IndexPage: React.FC = () => {
             Volver al inicio
           </button>
         </div>
+          </div>
+        </div>
       </div>
       <div
         id="third_page"
-        className={`absolute inset-0 z-20 h-screen w-screen flex items-center justify-center ${
+        className={`absolute inset-0 z-20 h-screen w-screen ${
           currentPage === "third" ? "" : "hidden"
         }`}
       >
+        <div className="relative h-full w-full overflow-hidden bg-[#192a44]">
+          <img
+            src={fondoRuta}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover blur-[2px]"
+          />
+          <div className="relative z-10 flex h-full w-full items-center justify-center">
         <div>
           <img src={logoSvg} alt="Logo" className="w-[320px] h-auto mx-auto mb-2" />
           <div className="flex flex-col gap-[4px] items-center">
@@ -773,6 +789,8 @@ const IndexPage: React.FC = () => {
             </button>
 
             
+          </div>
+        </div>
           </div>
         </div>
       </div>
