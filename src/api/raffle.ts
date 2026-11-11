@@ -100,13 +100,28 @@ async function winnersForPrize(
   }
 
   const path = `/raffles/prizes/${prizeId}/winners`;
-  if (mode === "read") {
-    return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
-  }
+  const winners =
+    mode === "read" ? await readWinners(path) : await drawWinners(path);
 
+  console.log("[raffle] ganadores Jaguar", {
+    prizeId,
+    mode,
+    path,
+    count: winners.length,
+    winners,
+  });
+
+  return winners;
+}
+
+async function readWinners(path: string): Promise<RaffleWinner[]> {
+  return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
+}
+
+async function drawWinners(path: string): Promise<RaffleWinner[]> {
   const response = await jaguar(path, "POST");
   if (response.status === 409 || response.status === 204) {
-    return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
+    return readWinners(path);
   }
   if (!response.ok) {
     throw new RaffleRequestError(
@@ -116,7 +131,7 @@ async function winnersForPrize(
 
   const text = await response.text();
   if (!text.trim()) {
-    return readJson<RaffleWinner[]>(await jaguar(path, "GET"));
+    return readWinners(path);
   }
   return JSON.parse(text) as RaffleWinner[];
 }
@@ -230,11 +245,19 @@ async function runDraw(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult>
   if (useMock()) {
     const prizes = mockPrizesForWeek(week);
     const prize = pickDisplayedPrize(prizes, slot);
+    const winners = mockWinnersForPrize(prize.id, week);
+    console.log("[raffle] ganadores mock", {
+      week,
+      slot,
+      prizeId: prize.id,
+      count: winners.length,
+      winners,
+    });
     return resultFrom(
       { name: mockCampaign.name, raffles: [mockRaffleForWeek(week)] },
       prizes,
       slot,
-      mockWinnersForPrize(prize.id, week)
+      winners
     );
   }
 

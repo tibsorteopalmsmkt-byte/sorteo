@@ -197,5 +197,7 @@ export async function drawPrize(slot: PrizeSlot, week?: number): Promise<PrizeDr
     throw new RaffleRequestError(detail || "No se pudo realizar el sorteo.");
   }
 
+  console.log("[raffle] resultado del sorteo", { slot, week, body });
+
   return body as PrizeDrawResult;
 }
