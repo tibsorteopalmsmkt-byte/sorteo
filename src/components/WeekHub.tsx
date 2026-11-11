@@ -4,7 +4,7 @@ import logoSemana from "../images/ruta/logo-semana.png";
 import pillSemana from "../images/ruta/pill-semana.png";
 import iconChevron from "../images/ruta/icon-chevron-left.svg";
 import iconCheck from "../images/ruta/icon-check.svg";
-import { getWeek, type WeekNumber, type WeekPrizeId } from "../lib/weeks";
+import { getWeek, prizeUnlocked, type WeekNumber, type WeekPrizeId } from "../lib/weeks";
 
 export type { WeekPrizeId };
 
@@ -53,17 +53,26 @@ const WeekHub: React.FC<{
             </p>
           </div>
           {config.prizes.map((prize) => {
+            const unlocked = prizeUnlocked(drawn, prize.id);
+            const lockedClass = unlocked ? "" : "opacity-40";
             return (
               <React.Fragment key={prize.id}>
                 <button
                   type="button"
+                  disabled={!unlocked}
                   onClick={() =>
                     drawn[prize.id] ? onViewWinners(prize.id) : onDraw(prize.id)
                   }
                   aria-label={
-                    drawn[prize.id] ? `Ver ganadores de ${prize.title}` : `Sortear ${prize.title}`
+                    unlocked
+                      ? drawn[prize.id]
+                        ? `Ver ganadores de ${prize.title}`
+                        : `Sortear ${prize.title}`
+                      : `${prize.title} bloqueado hasta sortear el premio anterior`
                   }
-                  className="absolute cursor-pointer border-0 bg-transparent p-0"
+                  className={`absolute border-0 bg-transparent p-0 ${
+                    unlocked ? "cursor-pointer" : `cursor-not-allowed ${lockedClass}`
+                  }`}
                   style={{ left: prize.iconLeft, top: 287, width: 230, height: 230 }}
                 >
                   <img
@@ -74,7 +83,7 @@ const WeekHub: React.FC<{
                 </button>
                 {drawn[prize.id] && (
                   <div
-                    className="pointer-events-none absolute flex h-[28px] items-center gap-[4px] rounded-[21px] bg-[#e9ffea] px-[8px] py-[2px]"
+                    className={`pointer-events-none absolute flex h-[28px] items-center gap-[4px] rounded-[21px] bg-[#e9ffea] px-[8px] py-[2px] ${lockedClass}`}
                     style={{ left: prize.tagLeft, top: 287 }}
                   >
                     <img src={iconCheck} alt="" width={14} height={14} />
@@ -84,7 +93,7 @@ const WeekHub: React.FC<{
                   </div>
                 )}
                 <div
-                  className="pointer-events-none absolute h-[71px] w-[243px]"
+                  className={`pointer-events-none absolute h-[71px] w-[243px] ${lockedClass}`}
                   style={{ left: prize.pillLeft, top: 487 }}
                 >
                   <img src={pillSemana} alt="" className="h-full w-full max-w-none object-cover" />
@@ -96,7 +105,7 @@ const WeekHub: React.FC<{
                   </p>
                 </div>
                 <div
-                  className="pointer-events-none absolute -translate-x-1/2 text-center"
+                  className={`pointer-events-none absolute -translate-x-1/2 text-center ${lockedClass}`}
                   style={{
                     left: prize.labelLeft,
                     top: 561,
@@ -119,8 +128,11 @@ const WeekHub: React.FC<{
                 {drawn[prize.id] && (
                   <button
                     type="button"
+                    disabled={!unlocked}
                     onClick={() => onViewWinners(prize.id)}
-                    className="absolute flex h-[40px] w-[182px] items-center justify-center rounded-[32px] border border-white/20 bg-white/[0.11] font-urbanist text-[16px] font-bold leading-[24px] text-[#f5f5f5]"
+                    className={`absolute flex h-[40px] w-[182px] items-center justify-center rounded-[32px] border border-white/20 bg-white/[0.11] font-urbanist text-[16px] font-bold leading-[24px] text-[#f5f5f5] ${
+                      unlocked ? "cursor-pointer" : `cursor-not-allowed ${lockedClass}`
+                    }`}
                     style={{ left: prize.buttonLeft, top: prize.buttonTop }}
                   >
                     VER GANADORES

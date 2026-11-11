@@ -16,7 +16,7 @@ import WeekHub from "../components/WeekHub";
 import fondoRuta from "../images/ruta/fondo.png";
 import logoPalms from "../images/ruta/logo-palms.png";
 import confetti from "../images/confetti.gif";
-import { getWeek, type WeekNumber, type WeekPrizeId } from "../lib/weeks";
+import { getWeek, prizeUnlocked, type WeekNumber, type WeekPrizeId } from "../lib/weeks";
 import logoSvg from "../images/logo.svg";
 import iconX from "../images/icon-x.svg";
 import palmsbetPalm from "../images/palmsbet/03302.svg";
@@ -341,11 +341,17 @@ const IndexPage: React.FC = () => {
   }, []);
 
   const handleOpenWeek = (week: WeekNumber) => {
+    const status = weekStatuses[week];
+    const currentWeek = ([1, 2, 3, 4] as WeekNumber[]).find(
+      (item) => weekStatuses[item] === "CONSOLIDATED"
+    );
+    if (status !== "DRAWN" && week !== currentWeek) return;
     setActiveWeek(week);
     setCurrentPage("week");
   };
 
   const handleDrawPrize = (prize: WeekPrizeId) => {
+    if (!prizeUnlocked(drawnByWeek[activeWeek], prize) || drawnByWeek[activeWeek][prize]) return;
     setDrawError(null);
     if (prize === "final") setFinalWinnerVisible(false);
     setAnimationNext(prize);
@@ -354,6 +360,7 @@ const IndexPage: React.FC = () => {
   };
 
   const handleViewWinners = (prize: WeekPrizeId) => {
+    if (!prizeUnlocked(drawnByWeek[activeWeek], prize)) return;
     const week = activeWeek;
     const saved = drawsByWeek.current[week];
     const ready =

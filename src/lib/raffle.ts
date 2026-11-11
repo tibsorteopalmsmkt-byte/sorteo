@@ -24,6 +24,7 @@ export interface RafflePrize {
 export interface RaffleWinner {
   id: string;
   username: string;
+  playerId: string | number;
   winnerType: "PRIMARY" | "ALTERNATE";
   selectionOrder: number;
   winningTicketNumber: number;
@@ -129,7 +130,7 @@ export function toShownWinners(winners: RaffleWinner[]): PrizeDrawResult["winner
     .sort((a, b) => a.selectionOrder - b.selectionOrder)
     .map((winner) => ({
       username: winner.username,
-      code: String(winner.winningTicketNumber),
+      code: String(winner.playerId),
     }));
 }
 
@@ -151,11 +152,18 @@ export interface RaffleParticipant {
   options: number;
 }
 
+function logJaguarDebug(body: { debug?: unknown } | null) {
+  if (!body || !("debug" in body) || body.debug === undefined) return;
+  console.log("[raffle] Jaguar", body.debug);
+}
+
 export async function fetchParticipants(week: number): Promise<RaffleParticipant[]> {
   const response = await fetch(`/api/raffle?participants=1&week=${week}`);
   const body = (await response.json().catch(() => null)) as
-    | { participants?: RaffleParticipant[]; detail?: string }
+    | { participants?: RaffleParticipant[]; detail?: string; debug?: unknown }
     | null;
+
+  logJaguarDebug(body);
 
   if (!response.ok) {
     throw new RaffleRequestError(
@@ -169,8 +177,24 @@ export async function fetchParticipants(week: number): Promise<RaffleParticipant
 export async function fetchWeekStatuses(): Promise<WeekRaffleStatus[]> {
   const response = await fetch("/api/raffle");
   const body = (await response.json().catch(() => null)) as
-    | { weeks?: WeekRaffleStatus[]; detail?: string }
+    | { weeks?: WeekRaffleStatus[]; detail?: string; debug?: unknown }
     | null;
+
+  logJaguarDebug(body);
+
+  const traces = Array.isArray(body?.debug) ? body.debug : [];
+  const campaign = traces.find(
+    (item) =>
+      !!item &&
+      typeof item === "object" &&
+      "path" in item &&
+      item.path === "/raffles/campaign/active"
+  );
+  console.log(
+    "[raffle] respuesta /raffles/campaign/active",
+    campaign && typeof campaign === "object" && "body" in campaign ? campaign.body : campaign
+  );
+  console.log("[raffle] semanas que usa la home", body?.weeks);
 
   if (!response.ok) {
     throw new RaffleRequestError(
@@ -188,9 +212,11 @@ export async function drawPrize(slot: PrizeSlot, week?: number): Promise<PrizeDr
     body: JSON.stringify({ slot, week }),
   });
   const body = (await response.json().catch(() => null)) as
-    | PrizeDrawResult
-    | { detail?: string }
+    | (PrizeDrawResult & { debug?: unknown })
+    | { detail?: string; debug?: unknown }
     | null;
+
+  logJaguarDebug(body);
 
   if (!response.ok) {
     const detail = body && "detail" in body ? body.detail : undefined;

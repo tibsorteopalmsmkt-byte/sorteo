@@ -102,11 +102,13 @@ function WeekButton({
   week,
   colored,
   drawn,
+  openable,
   onClick,
 }: {
   week: WeekCard;
   colored: boolean;
   drawn: boolean;
+  openable: boolean;
   onClick?: () => void;
 }) {
   const center = week.left + week.size / 2;
@@ -115,9 +117,14 @@ function WeekButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      disabled={!openable}
+      onClick={openable ? onClick : undefined}
       aria-label={`${week.label}, ${caption}`}
-      className="group absolute cursor-pointer border-0 bg-transparent p-0 transition-transform duration-300 hover:scale-[1.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ffce58]"
+      className={`absolute border-0 bg-transparent p-0 ${
+        openable
+          ? "cursor-pointer transition-transform duration-300 hover:scale-[1.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ffce58]"
+          : "pointer-events-none"
+      }`}
       style={{
         left: week.left,
         top: week.top,
@@ -136,7 +143,7 @@ function WeekButton({
         <img
           src={week.prize}
           alt=""
-          className="pointer-events-none absolute left-0 top-0 max-w-none object-cover opacity-100 transition-opacity duration-300 group-hover:opacity-0 group-focus-visible:opacity-0"
+          className="pointer-events-none absolute left-0 top-0 max-w-none object-cover"
           style={{ width: week.size, height: week.size }}
         />
       )}
@@ -214,7 +221,9 @@ const RouteHome: React.FC<{
           className="absolute left-[40px] top-[196px] h-[440px] w-[447px] max-w-none object-cover"
         />
         {weeks.map((week) => {
-          const drawn = statuses[week.week] === "DRAWN";
+          const status = statuses[week.week];
+          const drawn = status === "DRAWN";
+          const openable = drawn || week.week === currentWeek;
           const colored = known ? drawn || week.week === currentWeek : !week.prize;
           return (
             <WeekButton
@@ -222,6 +231,7 @@ const RouteHome: React.FC<{
               week={week}
               colored={colored}
               drawn={drawn}
+              openable={openable}
               onClick={() => onOpenWeek(week.week)}
             />
           );

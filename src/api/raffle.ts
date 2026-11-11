@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "async_hooks";
 import * as dotenv from "dotenv";
 import type { GatsbyFunctionRequest, GatsbyFunctionResponse } from "gatsby";
 import {
@@ -43,6 +44,35 @@ function apiBaseUrl(): string {
   ).replace(/\/$/, "");
 }
 
+type JaguarTrace = {
+  method: "GET" | "POST";
+  path: string;
+  status: number;
+  body: unknown;
+};
+
+const jaguarTrace = new AsyncLocalStorage<JaguarTrace[]>();
+
+function localBrowserLog(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+function traceBody(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function withDebug<T extends Record<string, unknown>>(
+  payload: T,
+  trace: JaguarTrace[]
+): T | (T & { debug: JaguarTrace[] }) {
+  if (!localBrowserLog()) return payload;
+  return { ...payload, debug: trace };
+}
+
 async function jaguar(path: string, method: "GET" | "POST"): Promise<Response> {
   const apiKey = envValue("JAGUAR_API_KEY");
   if (!apiKey) {
@@ -52,7 +82,7 @@ async function jaguar(path: string, method: "GET" | "POST"): Promise<Response> {
   }
 
   try {
-    return await fetch(`${apiBaseUrl()}${path}`, {
+    const response = await fetch(`${apiBaseUrl()}${path}`, {
       method,
       headers: {
         // El POST de ganadores no declara application/json en @Produces.
@@ -61,6 +91,16 @@ async function jaguar(path: string, method: "GET" | "POST"): Promise<Response> {
         "X-API-Key": apiKey,
       },
     });
+    const trace = jaguarTrace.getStore();
+    if (trace) {
+      trace.push({
+        method,
+        path,
+        status: response.status,
+        body: traceBody(await response.clone().text()),
+      });
+    }
+    return response;
   } catch {
     throw new RaffleRequestError("No se pudo conectar con el servicio de sorteos.");
   }
@@ -292,59 +332,65 @@ async function runDraw(slot: PrizeSlot, week?: number): Promise<PrizeDrawResult>
   };
 }
 
-export default async function handler(
+function failureDetail(error: unknown): string {
+  return error instanceof RaffleRequestError
+    ? error.message
+    : "El servicio de sorteos falló. Inténtalo de nuevo.";
+}
+
+export default function handler(
   req: GatsbyFunctionRequest,
   res: GatsbyFunctionResponse
 ) {
   res.setHeader("Cache-Control", "no-store");
+  const trace: JaguarTrace[] = [];
 
-  if (req.method === "GET" && req.query.participants === "1") {
-    const week = Number(req.query.week);
-    try {
-      res.status(200).json({ participants: await participantsForWeek(week) });
-    } catch (error) {
-      const detail =
-        error instanceof RaffleRequestError
-          ? error.message
-          : "El servicio de sorteos falló. Inténtalo de nuevo.";
-      res.status(502).json({ detail });
+  return jaguarTrace.run(trace, async () => {
+    if (useMock()) {
+      trace.push({
+        method: "GET",
+        path: "(mock)",
+        status: 200,
+        body: { detail: "Respuesta local de mock. Jaguar no fue llamado." },
+      });
     }
-    return;
-  }
 
-  if (req.method === "GET") {
-    try {
-      res.status(200).json({ weeks: await weekStatuses() });
-    } catch (error) {
-      const detail =
-        error instanceof RaffleRequestError
-          ? error.message
-          : "El servicio de sorteos falló. Inténtalo de nuevo.";
-      res.status(502).json({ detail });
+    if (req.method === "GET" && req.query.participants === "1") {
+      const week = Number(req.query.week);
+      try {
+        res.status(200).json(withDebug({ participants: await participantsForWeek(week) }, trace));
+      } catch (error) {
+        res.status(502).json(withDebug({ detail: failureDetail(error) }, trace));
+      }
+      return;
     }
-    return;
-  }
 
-  if (req.method !== "POST") {
-    res.status(405).json({ detail: "Método no permitido." });
-    return;
-  }
+    if (req.method === "GET") {
+      try {
+        res.status(200).json(withDebug({ weeks: await weekStatuses() }, trace));
+      } catch (error) {
+        res.status(502).json(withDebug({ detail: failureDetail(error) }, trace));
+      }
+      return;
+    }
 
-  const body = req.body as { slot?: string; week?: number } | undefined;
-  const slot = body?.slot;
-  const week = body?.week;
-  if (slot !== "fifty" && slot !== "bonus" && slot !== "principal") {
-    res.status(400).json({ detail: "Indica si el sorteo es el de S/100 o el premio final." });
-    return;
-  }
+    if (req.method !== "POST") {
+      res.status(405).json({ detail: "Método no permitido." });
+      return;
+    }
 
-  try {
-    res.status(200).json(await runDraw(slot, week));
-  } catch (error) {
-    const detail =
-      error instanceof RaffleRequestError
-        ? error.message
-        : "El servicio de sorteos falló. Inténtalo de nuevo.";
-    res.status(502).json({ detail });
-  }
+    const body = req.body as { slot?: string; week?: number } | undefined;
+    const slot = body?.slot;
+    const week = body?.week;
+    if (slot !== "fifty" && slot !== "bonus" && slot !== "principal") {
+      res.status(400).json({ detail: "Indica si el sorteo es el de S/100 o el premio final." });
+      return;
+    }
+
+    try {
+      res.status(200).json(withDebug({ ...(await runDraw(slot, week)) }, trace));
+    } catch (error) {
+      res.status(502).json(withDebug({ detail: failureDetail(error) }, trace));
+    }
+  });
 }

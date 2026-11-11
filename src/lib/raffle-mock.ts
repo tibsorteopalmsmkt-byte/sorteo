@@ -1,7 +1,6 @@
 import type { Campaign, RafflePrize, RaffleWinner } from "./raffle";
 
 export interface JaguarWinner extends RaffleWinner {
-  playerId: string;
   createdAt: string;
 }
 

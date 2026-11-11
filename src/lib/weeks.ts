@@ -156,3 +156,13 @@ export const weeks: Record<WeekNumber, WeekConfig> = {
 export function getWeek(week: WeekNumber): WeekConfig {
   return weeks[week];
 }
+
+const PRIZE_ORDER: WeekPrizeId[] = ["fifty", "third", "final"];
+
+export function prizeUnlocked(
+  drawn: Record<WeekPrizeId, boolean>,
+  prize: WeekPrizeId
+): boolean {
+  const index = PRIZE_ORDER.indexOf(prize);
+  return PRIZE_ORDER.slice(0, index).every((id) => drawn[id]);
+}
