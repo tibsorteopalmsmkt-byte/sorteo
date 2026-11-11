@@ -246,8 +246,8 @@ async function weekStatuses(): Promise<
 }
 
 interface JaguarParticipant {
-  playerId: number;
-  username: string;
+  playerId: number | null;
+  username: string | null;
   validTicketsCount: number;
 }
 
@@ -271,11 +271,18 @@ async function participantsForWeek(week: number) {
   );
 
   return rows
-    .map((row) => ({
-      username: row.username,
-      code: String(row.playerId),
-      options: row.validTicketsCount,
-    }))
+    .flatMap((row) => {
+      if (row.playerId == null || typeof row.username !== "string" || !row.username) {
+        return [];
+      }
+      return [
+        {
+          username: row.username,
+          code: String(row.playerId),
+          options: row.validTicketsCount,
+        },
+      ];
+    })
     .sort(
       (a, b) => b.options - a.options || a.username.localeCompare(b.username, "es")
     );
