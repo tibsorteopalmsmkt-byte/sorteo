@@ -46,7 +46,7 @@ interface UserCount {
 
 const WINNER_COUNT = 10;
 const PRIZE_LABEL = "S/ 100";
-const FINAL_PRIZE_LABEL = "PlayStation 5 + GTA 5";
+const FINAL_PRIZE_LABEL = "PlayStation 5 + GTA 6";
 
 function loadParticipants(week: WeekNumber): Promise<UserCount[]> {
   return fetchParticipants(week);

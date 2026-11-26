@@ -38,7 +38,7 @@ const weeks: WeekCard[] = [
     week: 1,
     label: "SEMANA 1",
     title: "PlayStation 5",
-    subtitle: "+ GTA 5",
+    subtitle: "+ GTA 6",
     frame: regaloS1,
     badge: pillSemana,
     left: 627,
