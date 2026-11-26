@@ -80,17 +80,17 @@ export const weeks: Record<WeekNumber, WeekConfig> = {
   1: {
     week: 1,
     label: "SEMANA 1",
-    finalCountdownTitle: "PS5 + GTA5",
+    finalCountdownTitle: "PS5 + GTA6",
     finalCountdownDetail: "1 ganador",
     finalImage: regaloS1,
-    finalPrizeLabel: "PlayStation 5 + GTA 5",
+    finalPrizeLabel: "PlayStation 5 + GTA 6",
     prizes: [
       fiftyPrize,
       hundredPrize,
       finalPrize({
         image: regaloPs5,
         badge: "1 GANADOR",
-        title: "PS5 + GTA5",
+        title: "PS5 + GTA6",
       }),
     ],
   },

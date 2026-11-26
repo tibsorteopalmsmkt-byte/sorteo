@@ -17,7 +17,7 @@ const WEEK_END_AT = [
 const PRINCIPAL_PRIZES: Array<{ id: string; name: string; winnersCount: number }> = [
   {
     id: "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
-    name: "PlayStation 5 + GTA 5",
+    name: "PlayStation 5 + GTA 6",
     winnersCount: 1,
   },
   {
